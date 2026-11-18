@@ -1,0 +1,291 @@
+@page "/MEMMUQ44"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject IMemberTypeRepository MemberTypeRepository
+@inject ILocationRepository LocationRepository
+@inject UserSessionService UserSession
+@inject ILogService<MemberType> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "Member.View")]
+
+<Spinner IsVisible="@__isSubmittingMemberType" Message="Saving Record" />
+
+<!-- Banner -->
+<Banner Title="Membership Type Management"
+        Subtitle="Organize, track, and manage all membership types in the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <EditForm Model="__memberTypeParameter" OnValidSubmit="OnValidMemberTypeSubmit">
+                    <DataAnnotationsValidator />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Member Type</label>
+                                <InputText class="input" @bind-Value="__memberTypeParameter.fstrType" />
+                                <ValidationMessage For="@(() => __memberTypeParameter.fstrType)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-2 label">Location</label>
+                                <InputSelect class="@($"select {(__memberTypeParameter.fstrLocation == null ? "placeholder-shown" : "")}")" @bind-Value="__memberTypeParameter.fstrLocation">
+                                    <option value=""></option>
+                                    @foreach (var req in __locationCurrencyModel)
+                                    {
+                                        <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => __memberTypeParameter.fstrLocation)" />
+                            </div>
+
+
+                            <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                                <input class="formcheckinput" type="checkbox" @bind="__memberTypeParameter.fblnActive">
+                                <label class="formchecklabel mb-0 label">Activate</label>
+                            </div>
+
+                            <!-- Buttons -->
+                            @if (__isUpdatingMemberType)
+                            {
+                                <AuthorizeView Policy="Member.Update" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-warning text-white" type="submit">Update Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetMemberTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+                            else
+                            {
+
+                                <AuthorizeView Policy="Member.Add" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-success" type="submit">Save Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetMemberTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+
+
+
+                        </div>
+
+                        <div class="col-md-6">
+                            <InfoCard Model="@__memberTypeParameter"
+                                      Title="Review Member Type"
+                                      Subtitle="Ensure that the data entered is correct before submitting"
+                                      Img="/img/user.png" />
+
+                        </div>
+                    </div>
+
+                </EditForm>
+
+
+
+
+                <div class="mt-5">
+                    <Table TItem="MemberTypeModel"
+                           Items="__memberTypeModel"
+                           OnRowClick="SelectedMemberType"
+                           SearchFilter="SearchMemberType"
+                           Title="Member Type"
+                           AllowFiltering="true"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           ColumnSpan="4"
+                           IsInactive="@( u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Member Type</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>When</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="memberType">
+                            <td>@memberType.fstrType</td>
+                            <td>@memberType.fstrLocation</td>
+                            <td>
+                                <span class="badge @(memberType.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                    @(memberType.fblnActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                @LocalTime.ToLocal(memberType.fdtmWhen).ToString("MMM dd, yyyy hh:mm:ss tt")
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The form model bound to the add / edit form.</summary>
+    private MemberTypeDataTransferObject __memberTypeParameter = new();
+
+    private IEnumerable<MemberTypeModel> __memberTypeModel = [];
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>Active locations only – these fill the "Location" drop-down.</summary>
+    private IEnumerable<LocationModel> __locationCurrencyModel = [];
+
+    private bool __isUpdatingMemberType;
+    private bool __isSubmittingMemberType;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __memberTypeParameter = NewMemberType();
+        await LoadAllDataAsync();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads locations and member types from the database.</summary>
+    private async Task LoadAllDataAsync()
+    {
+        try
+        {
+            __locationModel = await LocationRepository.SelectLocation();
+            __memberTypeModel = await MemberTypeRepository.SelectMemberType();
+            __locationCurrencyModel = __locationModel.Where(x => x.fblnActive).ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load member types", ex);
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>A blank form model stamped with the signed-in user.</summary>
+    private MemberTypeDataTransferObject NewMemberType() => new() { fstrWho = UserSession.Username };
+
+    /// <summary>Clears the form and reloads the lists.</summary>
+    private async Task ResetMemberTypeProperties()
+    {
+        __memberTypeParameter = NewMemberType();
+        __isUpdatingMemberType = false;
+        __isSubmittingMemberType = false;
+
+        await LoadAllDataAsync();
+    }
+
+    /// <summary>Loads a table row into the form for editing.</summary>
+    private void SelectedMemberType(MemberTypeModel memberType)
+    {
+        __isUpdatingMemberType = true;
+        __memberTypeParameter = new()
+        {
+            flngKey = memberType.flngKey,
+            fstrType = memberType.fstrType,
+            fstrLocation = memberType.fstrLocation,
+            fblnActive = memberType.fblnActive,
+            fstrWho = memberType.fstrWho,
+            fdtmWhen = memberType.fdtmWhen
+        };
+    }
+
+    /// <summary>Saves the record (insert or update) and shows the result.</summary>
+    private async Task OnValidMemberTypeSubmit()
+    {
+        if (__isSubmittingMemberType) return;   // protects against a double click
+
+        __isSubmittingMemberType = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__memberTypeParameter.fstrType))
+            {
+                ToastService.ShowWarning("Please fill out all fields");
+                return;
+            }
+
+            var message = await MemberTypeRepository.AddOrUpdateMemberType(__memberTypeParameter, insert: !__isUpdatingMemberType);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetMemberTypeProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the member type", ex);
+        }
+        finally
+        {
+            __isSubmittingMemberType = false;
+        }
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Text filter for the table (null-safe).</summary>
+    private bool SearchMemberType(MemberTypeModel memberType, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(memberType.fstrType) || Has(memberType.fstrLocation);
+    }
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

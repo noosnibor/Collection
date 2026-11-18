@@ -1,0 +1,36 @@
+@* CardButton – a large clickable tile used on the portal home page (one per church / application). *@
+
+<a class="app-card" href="@NavigateTo" style="--card-accent: @AccentColor;">
+    <span class="app-card__art" aria-hidden="true">
+        @((MarkupString)Icons.Get("plus", "currentColor", 220))
+    </span>
+
+    <span class="app-card__cta">
+        @(string.IsNullOrWhiteSpace(BadgeText) ? "Sign in" : BadgeText)
+        @((MarkupString)Icons.Get("arrow-right", "currentColor", 16))
+    </span>
+
+    <h3 class="app-card__title">@Title</h3>
+    <p class="app-card__subtitle">@Subtitle</p>
+</a>
+
+@code {
+    /// <summary>Card heading.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Line of text under the heading.</summary>
+    [Parameter, EditorRequired] public string Subtitle { get; set; } = string.Empty;
+
+    /// <summary>Ignored – the tile no longer uses a remote photo (kept for source compatibility).</summary>
+    [Parameter] public string ImageUrl { get; set; } = string.Empty;
+
+    /// <summary>Route or URL the card navigates to.</summary>
+    [Parameter] public string NavigateTo { get; set; } = "#";
+
+    /// <summary>CSS colour for the icon tile (hex, rgb, hsl, var…). Defaults to the theme accent.</summary>
+    [Parameter] public string AccentColor { get; set; } = "var(--accent)";
+
+    /// <summary>Optional short badge label (e.g. "New", "Beta").</summary>
+    [Parameter] public string? BadgeText { get; set; }
+
+}

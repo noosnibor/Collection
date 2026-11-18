@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0b78e3" />
+    <title>WAFIF Collection Management System</title>
+    @* Applies the saved light/dark theme before first paint (prevents a white flash). *@
+    <script src="js/theme.js"></script>
+    <link rel="stylesheet" href="@Assets["css/bootstrap.css"]" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="lib/rrweb/rrweb-player.css" />
+    <link rel="stylesheet" href="@Assets["Collection.Web.styles.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+
+<body>
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="/js/SummaryExport.js"></script>
+    <script src="js/localTime.js"></script>
+    @* Snapshot (session replay): rrweb records the page, rrweb-player plays it back for System Admins. *@
+    <script src="lib/rrweb/rrweb.min.js"></script>
+    <script src="lib/rrweb/rrweb-player.min.js"></script>
+</body>
+
+</html>

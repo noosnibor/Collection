@@ -1,0 +1,231 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+
+@inject AppVersionService VersionService
+@inject UserSessionService Session
+@inject IJSRuntime JS
+@inject IConfiguration Config
+@inject LocalTimeService LocalTime
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthStateProvider
+
+@* ==========================================================================
+   MainLayout – the application shell shown to signed-in users.
+   Windows 11 style: navigation sidebar on the left, a translucent top bar,
+   and the page content in a scrolling area. Works in light and dark mode.
+   ========================================================================== *@
+
+<div class="page @(__navOpen ? "nav-open" : "")">
+
+    @* Mobile only: dark scrim behind the slide-in sidebar *@
+    <div class="nav-scrim" @onclick="CloseNav"></div>
+
+    <NavMenu UserName="@Session.FullName"
+             AppName="@Session.Role"
+             Items="@__menuItems" />
+
+    <main>
+        @* ---------------- Top bar ---------------- *@
+        <header class="ml-topbar">
+            <div class="ml-topbar__left">
+                <button type="button" class="ml-iconbtn ml-hamburger" aria-label="Open navigation" @onclick="ToggleNav">
+                    @((MarkupString)Icons.Get("menu", "currentColor", 20))
+                </button>
+
+                <span class="ml-brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                        <path d="M12 3v18M6 9h12" />
+                    </svg>
+                </span>
+                <h1 class="ml-topbar__title">WAFIF <span>Collection Management</span></h1>
+            </div>
+
+            <div class="ml-topbar__right">
+                <ThemeToggle />
+
+                @if (Session.IsAuthenticated)
+                {
+                    @if (__profileOpen)
+                    {
+                        <div class="menu-overlay" @onclick="CloseProfile"></div>
+                    }
+
+                    <div class="ml-profile">
+                        <button type="button"
+                                class="ml-profile__button"
+                                aria-haspopup="menu"
+                                aria-expanded="@__profileOpen"
+                                title="@Session.FullName"
+                                @onclick="ToggleProfile">
+                            <span class="avatar-initial rounded-circle">@Session.GetClaim(PortalClaims.ProfileInitials)</span>
+                        </button>
+
+                        <div class="profile-dropdown @(__profileOpen ? "show" : "")" role="menu">
+                            <div class="profile-dropdown__head">
+                                <span class="avatar-initial rounded-circle">@Session.GetClaim(PortalClaims.ProfileInitials)</span>
+                                <div>
+                                    <div class="profile-dropdown__name">@Session.FullName</div>
+                                    <div class="profile-dropdown__role">@Session.Role</div>
+                                    <div class="profile-dropdown__role">@Session.LocationKey</div>
+                                </div>
+                            </div>
+
+                            <button type="button" class="profile-dropdown__item" role="menuitem" @onclick="Logout">
+                                @((MarkupString)Icons.Get("log-out", "currentColor", 16))
+                                <span>Sign out</span>
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </header>
+
+        @* ---------------- Page content ---------------- *@
+        <article class="content">
+            <ToastContainer />
+            @* Starts the Snapshot recording for the signed-in user (only when Snapshot:Enabled is true). *@
+            <SnapshotRecorder />
+            @* Wait for the viewer's time zone so pages never flash UTC times. *@
+                    @if (__timeReady)
+                    {
+                        @Body
+                    }
+        </article>
+    </main>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>Browser storage key that remembers which app version the user last saw.</summary>
+    private const string VersionStorageKey = "LastVersion";
+
+    private bool __profileOpen;
+    private bool __timeReady;
+    private bool __navOpen;
+
+    /// <summary>
+    /// Sidebar entries. Each one names the permission policy that decides whether it is shown,
+    /// so users only see the modules their role is allowed to open.
+    /// (Previously every user saw every module and only found out on click.)
+    /// </summary>
+    private readonly List<NavMenu.SidebarItem> __menuItems =
+    [
+        new() { Label = "Dashboard",              Href = "/3F8YPFZN", ExactMatch = true, SvgPath = "grid",        RequireAuthenticated = true },
+        new() { Label = "Data Entry",             Href = "/CLLGRABS",                    SvgPath = "archive",     RequiredPolicy = "DataEntry.View" },
+        new() { Label = "Location Module",        Href = "/LOCMR2YB",                    SvgPath = "globe",       RequiredPolicy = "Location.View" },
+        new() { Label = "Currency Module",        Href = "/CURFC42S",                    SvgPath = "dollar-sign", RequiredPolicy = "Currency.View" },
+        new() { Label = "Collection Type Module", Href = "/VELM33UQ",                    SvgPath = "pie-chart",   RequiredPolicy = "CollectionType.View" },
+        new() { Label = "Membership Type Module", Href = "/MEMMUQ44",                    SvgPath = "users",       RequiredPolicy = "Member.View" },
+        new() { Label = "Payment Type Module",    Href = "/PYMRST02",                    SvgPath = "credit-card", RequiredPolicy = "Payment.View" },
+        new() { Label = "Report Module",          Href = "/report",                      SvgPath = "chart",       RequiredPolicy = "Report.View" },
+        new() { Label = "Financial Periods",      Href = "/PRDC7X2Q",                    SvgPath = "calendar",    RequiredPolicy = "Period.View" },
+        new() { Label = "User Module",            Href = "/user",                        SvgPath = "user-check",  RequiredPolicy = "User.View" },
+        new() { Label = "Snapshot",               Href = "/SNPV8K3M",                    SvgPath = "video",       RequiredPolicy = "Snapshot.View" }
+    ];
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override void OnInitialized()
+    {
+        // Close the mobile drawer whenever the user navigates.
+        NavManager.LocationChanged += HandleLocationChanged;
+
+        // A signed-out visitor has no business in the shell – send them to the portal home.
+        // (BUG FIX: the old code dereferenced Session.Principal! and crashed when it was null.)
+        if (!Session.IsAuthenticated)
+            NavManager.NavigateTo("/", replace: true);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Learn the viewer's time zone before any page renders so stored UTC times show as local time.
+        await LocalTime.InitializeAsync();
+        __timeReady = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !Session.IsAuthenticated) return;
+
+        await EnsureCurrentVersionAsync();
+    }
+
+    public void Dispose() => NavManager.LocationChanged -= HandleLocationChanged;
+
+    #endregion
+
+    #region Version Check
+
+    /// <summary>
+    /// When the application was upgraded since the user last signed in, the browser storage is
+    /// cleared (the theme choice is kept) and the user is sent back to sign in again.
+    /// </summary>
+    /// <remarks>
+    /// BUG FIX: this used to run in OnInitializedAsync, which on every page reload also redirected
+    /// the user to the dashboard (<c>NavigateTo("/3F8YPFZN")</c>), and JS interop there can throw.
+    /// </remarks>
+    private async Task EnsureCurrentVersionAsync()
+    {
+        if (!Config.GetValue("Updates:ShowReleaseNotes", true)) return;   // switched off (Development)
+
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", VersionStorageKey);
+            var current = VersionService.CurrentVersion;
+
+            if (string.IsNullOrEmpty(stored))
+            {
+                // First visit from this browser – just remember the version.
+                await JS.InvokeVoidAsync("localStorage.setItem", VersionStorageKey, current);
+                return;
+            }
+
+            if (stored != current)
+            {
+                await JS.InvokeVoidAsync("portalTheme.clearStorageKeepTheme");
+                SignOut();
+            }
+        }
+        catch (JSDisconnectedException) { /* the circuit closed while we were checking */ }
+    }
+
+    #endregion
+
+    #region Event Handlers
+
+    private void ToggleNav() => __navOpen = !__navOpen;
+
+    private void CloseNav() => __navOpen = false;
+
+    private void ToggleProfile() => __profileOpen = !__profileOpen;
+
+    private void CloseProfile() => __profileOpen = false;
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        __navOpen = false;
+        __profileOpen = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Logout() => SignOut();
+
+    /// <summary>Clears the session, notifies the auth provider and returns to the portal home.</summary>
+    private void SignOut()
+    {
+        __profileOpen = false;
+
+        if (AuthStateProvider is CustomAuthenticationService custom)
+            custom.NotifyUserLogout();
+        else
+            Session.Clear();
+
+        NavManager.NavigateTo("/", replace: true);
+    }
+
+    #endregion
+}

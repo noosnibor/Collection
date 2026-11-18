@@ -1,0 +1,462 @@
+﻿@page "/SNPV8K3M"
+
+@rendermode InteractiveServer
+
+@implements IAsyncDisposable
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ISnapshotRepository SnapshotRepository
+@inject IJSRuntime JS
+@inject ILogService<Snapshot> Log
+
+@attribute [Authorize(Policy = "Snapshot.View")]
+
+<Spinner IsVisible="@__isLoadingSession" Message="Loading recording" />
+
+@*
+    Snapshot - watch what a user did on the portal.
+
+    Real-world behaviour:
+      * Left: pick a user (people recorded in the last day / week / month), then one of their visits.
+      * Middle: the visit plays back like a video. Speed goes from 0.5x to 16x and "Skip idle time"
+        fast-forwards the gaps where nothing happened.
+      * Right: a timeline of every click and page change. Click one to jump straight to that moment.
+      * Typed text and table data are hidden in the recording (see Snapshot:MaskTextSelector in appsettings).
+*@
+
+<Banner Title="Snapshot"
+        Subtitle="Watch what users did on the portal. Typed text and table data are hidden, and old recordings are removed automatically." />
+
+<div class="sn-shell">
+
+    @* ------------------------------------------------------------ Users + visits *@
+    <div class="sn-left">
+
+        <section class="sn-panel">
+            <h3 class="sn-panel-title">Users</h3>
+
+            <input class="input sn-search" placeholder="Search users . . ." aria-label="Search users"
+                   @bind="__search" @bind:event="oninput" />
+
+            <div class="sn-chips" role="group" aria-label="Date range">
+                @foreach (var days in __dayOptions)
+                {
+                    <button type="button" class="sn-chip @(__days == days ? "on" : "")" @onclick="() => ChangeDaysAsync(days)">@(days == 1 ? "Today" : $"{days} days")</button>
+                }
+            </div>
+
+            @if (__isLoadingUsers)
+            {
+                <LoadingRecords blnLoading="__isLoadingUsers" />
+            }
+            else if (!FilteredUsers.Any())
+            {
+                <p class="sn-empty-text">No recordings in this period.</p>
+            }
+
+            @foreach (var user in FilteredUsers)
+            {
+                <button type="button" class="sn-row @(user.fstrUsername == __selectedUser?.fstrUsername ? "active" : "")"
+                        @onclick="() => SelectUserAsync(user)">
+                    <span class="sn-avatar">@Initial(user)</span>
+                    <span class="sn-row-text">
+                        <span class="sn-row-name">@DisplayName(user)</span>
+                        <span class="sn-row-meta">@user.fstrLocationKey · @user.flngSessionCount @(user.flngSessionCount == 1 ? "visit" : "visits") · @TimeAgo(user.fdtmLastSeen)</span>
+                    </span>
+                </button>
+            }
+        </section>
+
+        <section class="sn-panel">
+            <h3 class="sn-panel-title">Visits @(__selectedUser is null ? "" : $"· {DisplayName(__selectedUser)}")</h3>
+
+            @if (__selectedUser is null)
+            {
+                <p class="sn-empty-text">Pick a user to see their visits.</p>
+            }
+
+            @foreach (var session in __sessions)
+            {
+                <button type="button" class="sn-session @(session.flngKey == __selectedSession?.flngKey ? "active" : "")"
+                        @onclick="() => SelectSessionAsync(session)">
+                    <span class="sn-row-name">@ToLocal(session.fdtmStart).ToString("ddd d MMM, h:mm tt")</span>
+                    <span class="sn-row-meta">@FormatDuration(session.flngDurationMs) · @session.flngMarkerCount events · @session.fstrEnvironment</span>
+                </button>
+            }
+        </section>
+    </div>
+
+    @* ------------------------------------------------------------ Player *@
+    <section class="sn-panel sn-center">
+
+        @if (__selectedSession is null)
+        {
+            <div class="sn-empty">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2" y="4" width="20" height="16" rx="2" /><polygon points="10,9 16,12 10,15" />
+                </svg>
+                <p>Select a visit to watch it.</p>
+            </div>
+        }
+        else
+        {
+            <div class="sn-player-head">
+                <strong>@DisplayName(__selectedUser!)</strong>
+                <span class="sn-row-meta">@ToLocal(__selectedSession.fdtmStart).ToString("f") · @FormatDuration(__selectedSession.flngDurationMs)</span>
+            </div>
+
+            @* sn-block: if the admin's own session is recorded, the replay area shows as a grey box instead of being recorded *@
+            <div @ref="__playerHost" class="sn-player-host sn-block"></div>
+
+            @if (__loadFailed)
+            {
+                <div class="sn-note">There is no recording data for this visit yet.</div>
+            }
+
+            <div class="sn-controls">
+                <button type="button" class="sn-play" aria-label="Play or pause" @onclick="TogglePlayAsync">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <polygon points="6 4 20 12 6 20 6 4" />
+                    </svg>
+                </button>
+
+                <span class="sn-time">@FormatDuration(__currentMs) / @FormatDuration(__selectedSession.flngDurationMs)</span>
+
+                <div class="sn-speed" role="group" aria-label="Playback speed">
+                    @foreach (var speed in __speeds)
+                    {
+                        <button type="button" class="sn-speed-chip @(speed == __speed ? "on" : "")" @onclick="() => SetSpeedAsync(speed)">@(speed)x</button>
+                    }
+                </div>
+
+                <button type="button" role="switch" aria-checked="@(__skipIdle ? "true" : "false")"
+                        class="sn-switch @(__skipIdle ? "on" : "")" @onclick="ToggleSkipIdleAsync">
+                    <span class="sn-switch-track"><span class="sn-switch-knob"></span></span>
+                    Skip idle time
+                </button>
+            </div>
+        }
+    </section>
+
+    @* ------------------------------------------------------------ Timeline *@
+    <section class="sn-panel sn-right">
+        <h3 class="sn-panel-title">Timeline @(__markers.Count == 0 ? "" : $"· {__markers.Count} events")</h3>
+
+        @if (__selectedSession is null)
+        {
+            <p class="sn-empty-text">Clicks and page changes appear here.</p>
+        }
+
+        <div class="sn-timeline">
+            @foreach (var marker in __markers)
+            {
+                <button type="button" class="sn-marker @marker.fstrKind @(IsActive(marker) ? "active" : "")" @onclick="() => SeekAsync(marker)">
+                    <span class="sn-marker-time">@FormatDuration(marker.flngOffsetMs)</span>
+                    <span class="sn-marker-dot"></span>
+                    <span class="sn-marker-label">@marker.fstrLabel</span>
+                    @if (marker.fstrKind == "navigate")
+                    {
+                        <span class="sn-tag">page</span>
+                    }
+                </button>
+            }
+        </div>
+
+        <div class="sn-legend">
+            <span><i class="sn-dot click"></i>Click</span>
+            <span><i class="sn-dot navigate"></i>Page change</span>
+            <span><i class="sn-dot error"></i>Error</span>
+        </div>
+    </section>
+
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>Users that were recorded in the chosen period.</summary>
+    private List<SnapshotUserModel> __users = [];
+
+    /// <summary>Visits of the selected user, newest first.</summary>
+    private List<SnapshotSessionModel> __sessions = [];
+
+    /// <summary>Clicks / page changes of the selected visit.</summary>
+    private List<SnapshotMarkerModel> __markers = [];
+
+    private SnapshotUserModel? __selectedUser;
+    private SnapshotSessionModel? __selectedSession;
+
+    /// <summary>Recording chunks (base64) waiting to be handed to the player once its container exists on screen.</summary>
+    private string[]? __pendingChunks;
+
+    private string __search = string.Empty;
+    private int __days = 7;
+
+    /// <summary>Playhead position in milliseconds, updated by the player a few times a second.</summary>
+    private long __currentMs;
+
+    private bool __isLoadingUsers;
+    private bool __isLoadingSession;
+    private bool __loadFailed;
+
+    /// <summary>Choices for the date chips.</summary>
+    private static readonly int[] __dayOptions = [1, 7, 30];
+
+    /// <summary>0.5x for slow walk-throughs up to 16x to race through a long visit.</summary>
+    private static readonly double[] __speeds = [0.5, 1, 2, 4, 8, 16];
+
+    private double __speed = 1;
+
+    /// <summary>Fast-forwards through stretches where the user did nothing.</summary>
+    private bool __skipIdle = true;
+
+    private readonly CancellationTokenSource __cts = new();
+    private IJSObjectReference? __player;
+    private DotNetObjectReference<Snapshot>? __selfRef;
+    private ElementReference __playerHost;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __selfRef = DotNetObjectReference.Create(this);
+        await LoadUsersAsync();
+    }
+
+    /// <summary>
+    /// Hands the recording to the player AFTER the player container has been drawn
+    /// (the container only exists once a visit is selected).
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (__pendingChunks is null || __selectedSession is null) return;
+
+        var chunks = __pendingChunks;
+        __pendingChunks = null;
+
+        try
+        {
+            __player ??= await JS.InvokeAsync<IJSObjectReference>("import", __cts.Token, "./js/snapshotPlayer.js");
+
+            var loaded = await __player.InvokeAsync<bool>("load", __cts.Token, __playerHost, chunks, __selfRef);
+            __loadFailed = !loaded;
+
+            if (loaded)
+            {
+                // Carry the admin's chosen speed / skip setting over to the new visit.
+                await __player.InvokeVoidAsync("setSpeed", __cts.Token, __speed);
+                await __player.InvokeVoidAsync("setSkipIdle", __cts.Token, __skipIdle);
+            }
+        }
+        catch (OperationCanceledException) { /* page closed */ }
+        catch (JSDisconnectedException) { /* browser closed */ }
+        catch (Exception ex)
+        {
+            __loadFailed = true;
+            await ReportFailureAsync("The recording could not be played", ex);
+        }
+        finally
+        {
+            __isLoadingSession = false;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        __cts.Cancel();
+
+        try
+        {
+            if (__player is not null)
+            {
+                await __player.InvokeVoidAsync("destroy");
+                await __player.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+
+        __selfRef?.Dispose();
+        __cts.Dispose();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads the users recorded in the chosen period.</summary>
+    private async Task LoadUsersAsync()
+    {
+        __isLoadingUsers = true;
+
+        try
+        {
+            __users = await SnapshotRepository.SelectSnapshotUser(DateTime.UtcNow.AddDays(-__days), __cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load the recorded users", ex);
+        }
+        finally
+        {
+            __isLoadingUsers = false;
+        }
+    }
+
+    private async Task ChangeDaysAsync(int days)
+    {
+        __days = days;
+        await LoadUsersAsync();
+    }
+
+    private async Task SelectUserAsync(SnapshotUserModel user)
+    {
+        __selectedUser = user;
+        __selectedSession = null;
+        __markers = [];
+        __pendingChunks = null;
+
+        try
+        {
+            __sessions = await SnapshotRepository.SelectSnapshotSession(user.fstrUsername, __cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load the visits", ex);
+        }
+    }
+
+    /// <summary>Loads the timeline and the recording of one visit; the player itself starts in OnAfterRenderAsync.</summary>
+    private async Task SelectSessionAsync(SnapshotSessionModel session)
+    {
+        __selectedSession = session;
+        __currentMs = 0;
+        __loadFailed = false;
+        __markers = [];
+        __isLoadingSession = true;
+
+        try
+        {
+            // Timeline and recording are independent, so fetch both at once.
+            var markersTask = SnapshotRepository.SelectSnapshotMarker(session.flngKey, __cts.Token);
+            var chunksTask = SnapshotRepository.SelectSnapshotChunk(session.flngKey, __cts.Token);
+            await Task.WhenAll(markersTask, chunksTask);
+
+            __markers = markersTask.Result;
+            var chunks = chunksTask.Result;
+
+            if (chunks.Count == 0)
+            {
+                __loadFailed = true;
+                __isLoadingSession = false;
+                return;
+            }
+
+            // Each chunk stays gzip-compressed: the browser unpacks it, so the server does no heavy work.
+            __pendingChunks = [.. chunks.Select(c => Convert.ToBase64String(c.fbytData))];
+        }
+        catch (OperationCanceledException) { __isLoadingSession = false; }
+        catch (Exception ex)
+        {
+            __isLoadingSession = false;
+            await ReportFailureAsync("Unable to load the recording", ex);
+        }
+    }
+
+    #endregion
+
+    #region Player Controls
+
+    private async Task SeekAsync(SnapshotMarkerModel marker)
+    {
+        if (__player is null) return;
+
+        __currentMs = marker.flngOffsetMs;
+        await __player.InvokeVoidAsync("seek", __cts.Token, marker.flngOffsetMs);
+    }
+
+    private async Task SetSpeedAsync(double speed)
+    {
+        __speed = speed;
+        if (__player is not null) await __player.InvokeVoidAsync("setSpeed", __cts.Token, speed);
+    }
+
+    private async Task TogglePlayAsync()
+    {
+        if (__player is not null) await __player.InvokeVoidAsync("togglePlay", __cts.Token);
+    }
+
+    private async Task ToggleSkipIdleAsync()
+    {
+        __skipIdle = !__skipIdle;
+        if (__player is not null) await __player.InvokeVoidAsync("setSkipIdle", __cts.Token, __skipIdle);
+    }
+
+    /// <summary>Called by the player a few times a second while a visit plays.</summary>
+    [JSInvokable]
+    public Task OnPlayerTick(double ms)
+    {
+        __currentMs = (long)ms;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>True for the last event the playhead has passed (highlighted in the timeline).</summary>
+    private bool IsActive(SnapshotMarkerModel marker)
+        => marker.flngOffsetMs <= __currentMs
+           && !__markers.Any(o => o.flngOffsetMs > marker.flngOffsetMs && o.flngOffsetMs <= __currentMs);
+
+    #endregion
+
+    #region Display Helpers
+
+    private IEnumerable<SnapshotUserModel> FilteredUsers =>
+        string.IsNullOrWhiteSpace(__search)
+            ? __users
+            : __users.Where(u => DisplayName(u).Contains(__search, StringComparison.OrdinalIgnoreCase)
+                              || u.fstrUsername.Contains(__search, StringComparison.OrdinalIgnoreCase));
+
+    private static string DisplayName(SnapshotUserModel user)
+        => string.IsNullOrWhiteSpace(user.fstrFullName) ? user.fstrUsername : user.fstrFullName;
+
+    private static string Initial(SnapshotUserModel user)
+    {
+        var name = DisplayName(user).Trim();
+        return name.Length == 0 ? "?" : name[..1].ToUpperInvariant();
+    }
+
+    /// <summary>The database stores UTC; show the time the way the server's clock reads it.</summary>
+    private DateTime ToLocal(DateTime utc) => LocalTime.ToLocal(utc);
+
+    private static string FormatDuration(long ms)
+    {
+        var t = TimeSpan.FromMilliseconds(Math.Max(0, ms));
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+    }
+
+    private static string TimeAgo(DateTime utc)
+    {
+        var d = DateTime.UtcNow - DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        if (d.TotalMinutes < 2) return "just now";
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes}m ago";
+        if (d.TotalDays < 1) return $"{(int)d.TotalHours}h ago";
+        return $"{(int)d.TotalDays}d ago";
+    }
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

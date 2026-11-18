@@ -1,0 +1,15 @@
+﻿@if (blnLoading)
+{
+    <div class="mtc-state-row">
+        <div class="mtc-empty-state">
+            <div class="mtc-loading-spinner"></div>
+            <p class="mtc-empty-title">Loading records</p>
+            <p class="mtc-empty-sub">Please wait...</p>
+        </div>
+    </div>
+}
+
+
+@code {
+    [Parameter] public bool blnLoading { get; set; } = false;
+}

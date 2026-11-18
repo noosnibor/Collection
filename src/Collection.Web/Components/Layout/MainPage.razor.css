@@ -1,0 +1,20 @@
+/* MainPage – portal landing content */
+
+.portal-main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 36px 24px 64px;
+}
+
+.portal-intro { margin-bottom: 8px; }
+
+.portal-intro__heading { margin: 0; font-size: 30px; font-weight: 600; }
+
+.portal-intro__sub { margin: 4px 0 0; font-size: 16px; color: var(--text-3); }
+
+.portal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 413px), 413px));
+    gap: 22px;
+    margin-top: 30px;
+}

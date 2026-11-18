@@ -1,0 +1,589 @@
+﻿@page "/PRDC7X2Q"
+
+@rendermode InteractiveServer
+
+@implements IDisposable
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject IPeriodRepository PeriodRepository
+@inject ILocationRepository LocationRepository
+@inject UserSessionService UserSession
+
+@attribute [Authorize(Policy = "Period.View")]
+
+@* ==========================================================================
+   Financial Periods – close a month, quarter or year so that no transaction
+   dated inside it can be added, changed or deactivated. The lock is enforced
+   inside the database (sp_AddCollection / sp_UpdateCollection); this page is
+   only the way to close and reopen. Close / Reopen are administrator-only
+   (policies Period.Close / Period.Reopen, and checked again in the procedures).
+   ========================================================================== *@
+
+<Spinner IsVisible="@__isBusy" Message="@__busyMessage" />
+
+<Banner Title="Financial Periods"
+        Subtitle="Close a period for one location or for all locations at once. Transactions and exchange rates inside it are locked. Administrators only." />
+
+<div class="fp">
+
+    @* ---------------------------- Filters ---------------------------- *@
+    <div class="fp-bar">
+        <div class="fp-field">
+            <label for="fp-scope">Close for</label>
+            <select id="fp-scope" class="select" value="@__scope" @onchange="OnScopeChangedAsync">
+                <option value="@PeriodScope.AllLocations">All locations</option>
+                @foreach (var location in __locations)
+                {
+                    <option value="@location.fstrLocation">@location.fstrDescription (@location.fstrLocation)</option>
+                }
+            </select>
+        </div>
+
+        <div class="fp-field">
+            <label for="fp-year">Year</label>
+            <select id="fp-year" class="select" value="@__year" @onchange="OnYearChangedAsync">
+                @foreach (var year in __years)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+        </div>
+
+        @if (CanConvert)
+        {
+            <div class="fp-field">
+                <label>Amounts in</label>
+                <button type="button" class="fp-btn ghost fp-conv" aria-pressed="@(__inViewerCurrency ? "true" : "false")" @onclick="ToggleViewerCurrencyAsync">
+                    @(__inViewerCurrency ? $"Showing {__location} equivalent ({ViewerCurrency}) · show {__scope} currency" : $"View {__location} equivalent")
+                </button>
+            </div>
+        }
+
+        <div class="fp-seg" role="tablist" aria-label="Period type">
+            @foreach (var (code, label) in __types)
+            {
+                <button type="button" role="tab" aria-selected="@(code == __type ? "true" : "false")"
+                        class="@(code == __type ? "on" : "")"
+                        @onclick="() => OnTypeChangedAsync(code)">@label</button>
+            }
+        </div>
+    </div>
+
+    @* ---------------------------- Status strip ---------------------------- *@
+    <div class="fp-stats">
+        <div class="fp-stat">
+            <small>Closed through</small>
+            <b>@(__closedThrough?.Name ?? "Nothing closed")</b>
+            <span>@__lockedCount of @__periods.Count @TypePlural locked</span>
+        </div>
+        <div class="fp-stat">
+            <small>Open for entry</small>
+            <b>@__openNames.Count @(__openNames.Count == 1 ? TypeSingular : TypePlural)</b>
+            <span>@(__openNames.Count == 0 ? "Nothing open" : string.Join(", ", __openNames.Take(3)) + (__openNames.Count > 3 ? " …" : ""))</span>
+        </div>
+        <div class="fp-stat">
+            <small>Locked records</small>
+            <b>@__lockedRecords.ToString("N0")</b>
+            <span>@Money(__lockedTotal)@(Converted ? " · " + __location + " equivalent" : "")</span>
+        </div>
+        <div class="fp-stat @(__attention is null ? "" : "warn")">
+            <small>Needs attention</small>
+            <b>@(__attention?.Name ?? "All up to date")</b>
+            <span>@(__attention is null ? "No finished period is waiting to be closed" : "Past its end date and still open")</span>
+        </div>
+    </div>
+
+    @* ---------------------------- Period cards ---------------------------- *@
+    @if (Converted)
+    {
+        <p class="fp-fx">
+            Amounts are shown in @ViewerCurrency@(IsAll ? " for all locations, converted with " + __location + "'s exchange rates on each transaction date." : " (" + __location + " equivalent), converted with its exchange rates on each transaction date.")
+            @if (RatesMissing > 0)
+            {
+                <b> @RatesMissing record(s) have no exchange rate and are shown unconverted. Add the rate in the Currency module.</b>
+            }
+        </p>
+    }
+
+    <div class="fp-grid @(__type == PeriodTypes.Year ? "one" : "")">
+        @foreach (var period in __periods)
+        {
+            var state = StateOf(period);
+
+            <div class="fp-card @StateClass(state)">
+                <div class="fp-ch">
+                    <div>
+                        <h3>@period.Name</h3>
+                        <p>@RangeLabel(period)</p>
+                    </div>
+                    <span class="fp-chip @StateClass(state)">
+                        @if (state is CardState.Closed or CardState.Locked)
+                        {
+                            @((MarkupString)Icons.Get("lock", "currentColor", 13))
+                        }
+                        @StateLabel(state)
+                    </span>
+                </div>
+
+                @if (state == CardState.Future)
+                {
+                    <div class="fp-amt dim">—</div>
+                    <div class="fp-sub">No transactions yet</div>
+                }
+                else
+                {
+                    <div class="fp-amt"><small>@(period.fstrCurrencyKey ?? UserSession.CurrencyKey)</small>@period.fcurTotal.ToString("N2")</div>
+                    <div class="fp-sub">@period.flngRecords.ToString("N0") @(period.flngRecords == 1 ? "record" : "records")@(IsAll ? " · all locations" : "")</div>
+                }
+
+                <div class="fp-cf">
+                    <span class="fp-meta">@MetaText(period, state)</span>
+
+                    @if (state is CardState.Open or CardState.Current)
+                    {
+                        <AuthorizeView Policy="Period.Close" Context="auth">
+                            <Authorized>
+                                <button type="button" class="fp-btn primary" @onclick="() => OpenDialog(period, DialogMode.Close)">Close period</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    }
+                    else if (state == CardState.Locked && (period.fstrLockedBy?.EndsWith("(all locations)") ?? false))
+                    {
+                        @* Closed for every location: it can only be reopened from the "All locations" view. *@
+                        <button type="button" class="fp-btn ghost" @onclick="ShowAllLocationsAsync">View all locations</button>
+                    }
+                    else if (state == CardState.Closed)
+                    {
+                        <AuthorizeView Policy="Period.Reopen" Context="auth">
+                            <Authorized>
+                                <button type="button" class="fp-btn ghost" @onclick="() => OpenDialog(period, DialogMode.Reopen)">Reopen</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @* ---------------------------- History ---------------------------- *@
+    <section class="fp-hist" aria-label="Recent activity">
+        <h2>Recent activity</h2>
+        @if (__audit.Count == 0)
+        {
+            <p class="fp-empty">Nothing has been closed or reopened yet.</p>
+        }
+        else
+        {
+            <div class="fp-table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Action</th><th>Period</th><th>Scope</th><th>By</th><th>When (UTC)</th><th>Reason</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in __audit)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fp-chip @(entry.IsClose ? "closed" : "reopen")">
+                                        @if (entry.IsClose) { @((MarkupString)Icons.Get("lock", "currentColor", 13)) }
+                                        @(entry.IsClose ? "Closed" : "Reopened")
+                                    </span>
+                                </td>
+                                <td>@entry.PeriodName</td>
+                                <td>@(entry.IsAllLocations ? "All locations" : entry.fstrLocationKey)</td>
+                                <td>@entry.fstrWho</td>
+                                <td>@LocalTime.ToLocal(entry.fdtmWhen).ToString("MMM d, yyyy h:mm tt")</td>
+                                <td class="@(string.IsNullOrWhiteSpace(entry.fstrReason) ? "na" : "")">@(string.IsNullOrWhiteSpace(entry.fstrReason) ? "—" : entry.fstrReason)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@* ---------------------------- Confirmation dialog ---------------------------- *@
+@if (__target is not null)
+{
+    <div class="fp-scrim" @onclick="CloseDialog">
+        <div class="fp-dlg" role="dialog" aria-modal="true" aria-labelledby="fp-dlg-title" @onclick:stopPropagation="true">
+
+            <div class="fp-dh">
+                <div class="fp-di">@((MarkupString)Icons.Get("lock", "currentColor", 22))</div>
+                <div>
+                    <h2 id="fp-dlg-title">@(__mode == DialogMode.Close ? "Close" : "Reopen") @__target.Name?</h2>
+                    <p>@ScopeName · @__target.fdtmStart.ToString("d MMM yyyy") – @__target.fdtmEnd.ToString("d MMM yyyy")</p>
+                </div>
+            </div>
+
+            <div class="fp-dtotal">
+                <div>
+                    <small>Total in this period@(Converted ? $" · {__location} equivalent" : $" · {__scope}")</small>
+                    <b><span>@(__target.fstrCurrencyKey ?? UserSession.CurrencyKey)</span>@__target.fcurTotal.ToString("N2")</b>
+                </div>
+                <div class="r">@__target.flngRecords.ToString("N0") @(__target.flngRecords == 1 ? "record" : "records")@(IsAll ? " · all locations" : "")</div>
+            </div>
+
+            @if (__mode == DialogMode.Close)
+            {
+                <ul class="fp-checks">
+                    @foreach (var check in __checks)
+                    {
+                        <li class="@check.Level"><i aria-hidden="true"></i>@check.Text</li>
+                    }
+                </ul>
+
+                <div class="fp-note">
+                    <b>This locks the period for @(IsAll ? "every location" : __scope).</b> No one can add, edit or deactivate transactions or exchange rates dated inside it.
+                    Only an administrator can reopen it, and a reason is required.
+                </div>
+
+                <label class="fp-ack">
+                    <input type="checkbox" @bind="__ack" />
+                    <span>I have checked the totals for this period</span>
+                </label>
+            }
+            else
+            {
+                <div class="fp-note">
+                    <b>Reopening lets transactions be added or changed again.</b> The reason is kept in the history below.
+                </div>
+
+                <div class="fp-field wide">
+                    <label for="fp-reason">Reason for reopening <span class="req" aria-hidden="true">*</span></label>
+                    <textarea id="fp-reason" class="input fp-reason" rows="3" maxlength="250" @bind="__reason" @bind:event="oninput"></textarea>
+                    <span class="fp-hint">@(__reason?.Trim().Length ?? 0) / 250 · at least 5 characters</span>
+                </div>
+            }
+
+            <div class="fp-df">
+                <button type="button" class="fp-btn" @onclick="CloseDialog" disabled="@__isBusy">Cancel</button>
+                <button type="button" class="fp-btn primary" @onclick="ConfirmAsync" disabled="@(!CanConfirm || __isBusy)">
+                    @(__mode == DialogMode.Close ? $"Close {__target.Name}" : $"Reopen {__target.Name}")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    #region Types
+
+    private enum CardState { Closed, Locked, Open, Current, Future }
+    private enum DialogMode { Close, Reopen }
+
+    /// <summary>One line of the "before you close" checklist.</summary>
+    private sealed record Check(string Level, string Text);
+
+    #endregion
+
+    #region Private Fields
+
+    private readonly CancellationTokenSource __cts = new();
+
+    private static readonly (string Code, string Label)[] __types =
+    [
+        (PeriodTypes.Month, "Monthly"),
+        (PeriodTypes.Quarter, "Quarterly"),
+        (PeriodTypes.Year, "Yearly")
+    ];
+
+    private List<PeriodModel> __periods = [];
+    private List<PeriodAuditModel> __audit = [];
+    private List<int> __years = [];
+
+    private List<LocationModel> __locations = [];
+    private string __location = "";
+    private string __scope = PeriodScope.AllLocations;
+    private bool __inViewerCurrency;   // single location shown in the viewer's currency ("HQ equivalent")
+    private string __type = PeriodTypes.Month;
+    private int __year;
+
+    private bool __isBusy;
+    private string __busyMessage = "Loading periods";
+
+    // dialog state
+    private PeriodModel? __target;
+    private DialogMode __mode;
+    private bool __ack;
+    private string? __reason;
+    private List<Check> __checks = [];
+
+    // status strip
+    private PeriodModel? __closedThrough;
+    private PeriodModel? __attention;
+    private int __lockedCount;
+    private int __lockedRecords;
+    private decimal __lockedTotal;
+    private List<string> __openNames = [];
+
+    #endregion
+
+    #region Properties
+
+    private DateTime Today => LocalTime.Today;
+
+    private string TypeSingular => __type switch { PeriodTypes.Quarter => "quarter", PeriodTypes.Year => "year", _ => "month" };
+    private string TypePlural => __type switch { PeriodTypes.Quarter => "quarters", PeriodTypes.Year => "years", _ => "months" };
+
+    /// <summary>Money totals are shown for the viewer's own location, because each location has its own currency.</summary>
+    /// <summary>True when the amounts are shown in the viewer's currency (always for "All locations").</summary>
+    private bool Converted => IsAll || __inViewerCurrency;
+
+    /// <summary>The viewer is looking at another location, so the "HQ equivalent" switch makes sense.</summary>
+    private bool CanConvert => !IsAll && !string.Equals(__scope, __location, StringComparison.OrdinalIgnoreCase);
+
+    private string ViewerCurrency => __periods.FirstOrDefault()?.fstrCurrencyKey ?? UserSession.CurrencyKey ?? "";
+
+    private int RatesMissing => __periods.Sum(p => p.flngRatesMissing);
+
+    private bool IsAll => __scope == PeriodScope.AllLocations;
+
+    private string ScopeName => IsAll
+        ? "All locations"
+        : __locations.FirstOrDefault(l => l.fstrLocation == __scope)?.fstrDescription ?? __scope;
+
+    /// <summary>Closing needs the box ticked; reopening needs a real reason.</summary>
+    private bool CanConfirm => __mode == DialogMode.Close ? __ack : (__reason?.Trim().Length ?? 0) >= 5;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __year = LocalTime.Today.Year;
+        __location = UserSession.LocationKey ?? "";
+
+        try
+        {
+            __locations = (await LocationRepository.SelectLocation(active: true)).ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+
+        // Offer the last six years, newest first.
+        __years = Enumerable.Range(LocalTime.Today.Year - 5, 6).Reverse().ToList();
+
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        __cts.Cancel();
+        __cts.Dispose();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads the periods of the chosen year / type and the recent history.</summary>
+    private async Task LoadAsync(string message = "Loading periods")
+    {
+
+        try
+        {
+            __busyMessage = message;
+            __isBusy = true;
+
+            __periods = await PeriodRepository.SelectPeriods(__scope, __location, __year, __type, __inViewerCurrency, __cts.Token);
+            __audit = await PeriodRepository.SelectAudit(__scope, null, 8, __cts.Token);
+            Summarise();
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was closed while loading – nothing to show.
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            __isBusy = false;
+        }
+    }
+
+    /// <summary>Works out the four numbers shown in the status strip.</summary>
+    private void Summarise()
+    {
+        __closedThrough = __periods.LastOrDefault(p => p.IsLocked);
+        __lockedCount = __periods.Count(p => p.IsLocked);
+        __lockedRecords = __periods.Where(p => p.IsLocked).Sum(p => p.flngRecords);
+        __lockedTotal = __periods.Where(p => p.IsLocked).Sum(p => p.fcurTotal);
+        __attention = __periods.FirstOrDefault(p => StateOf(p) == CardState.Open);
+        __openNames = __periods
+            .Where(p => StateOf(p) is CardState.Open or CardState.Current)
+            .Select(p => p.Name).ToList();
+    }
+
+    #endregion
+
+    #region Filters
+
+    private async Task OnScopeChangedAsync(ChangeEventArgs e)
+    {
+        __scope = e.Value?.ToString() is { Length: > 0 } v ? v : PeriodScope.AllLocations;
+        __inViewerCurrency = false;
+        await LoadAsync();
+    }
+
+    /// <summary>Jumps to the all-locations view, where a period closed for every location can be reopened.</summary>
+    private async Task ShowAllLocationsAsync()
+    {
+        __scope = PeriodScope.AllLocations;
+        __inViewerCurrency = false;
+        await LoadAsync();
+    }
+
+    private async Task ToggleViewerCurrencyAsync()
+    {
+        __inViewerCurrency = !__inViewerCurrency;
+        await LoadAsync();
+    }
+
+    private async Task OnYearChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year)) __year = year;
+        await LoadAsync();
+    }
+
+    private async Task OnTypeChangedAsync(string type)
+    {
+        if (type == __type) return;
+        __type = type;
+        await LoadAsync();
+    }
+
+    #endregion
+
+    #region Card display helpers
+
+    private CardState StateOf(PeriodModel p)
+    {
+        if (p.fblnClosed) return CardState.Closed;
+        if (!string.IsNullOrEmpty(p.fstrLockedBy) || p.fblnCovered) return CardState.Locked;
+        if (p.fdtmStart.Date > Today) return CardState.Future;
+        return p.fdtmEnd.Date >= Today ? CardState.Current : CardState.Open;
+    }
+
+    private static string StateClass(CardState s) => s switch
+    {
+        CardState.Closed or CardState.Locked => "closed",
+        CardState.Current => "current",
+        CardState.Future => "future",
+        _ => "open"
+    };
+
+    private static string StateLabel(CardState s) => s switch
+    {
+        CardState.Closed or CardState.Locked => "Closed",
+        CardState.Current => "Current",
+        CardState.Future => "Not started",
+        _ => "Open"
+    };
+
+    private string RangeLabel(PeriodModel p) => p.fstrPeriodType switch
+    {
+        PeriodTypes.Quarter => $"{p.fdtmStart:MMM} – {p.fdtmEnd:MMM}",
+        PeriodTypes.Year => $"{p.fdtmStart:MMM} – {p.fdtmEnd:MMM}",
+        _ => $"{p.fdtmStart.Day} – {p.fdtmEnd:d MMM}"
+    };
+
+    private static string MetaText(PeriodModel p, CardState state) => state switch
+    {
+        CardState.Closed => $"Closed {p.fdtmClosedOn:MMM d} · {p.fstrClosedBy}",
+        CardState.Locked => string.IsNullOrEmpty(p.fstrLockedBy) ? "All its parts are closed" : $"Locked with {p.fstrLockedBy}",
+        CardState.Current => "In progress",
+        CardState.Open => "Ready to close",
+        _ => ""
+    };
+
+    private string Money(decimal amount) => $"{__periods.FirstOrDefault()?.fstrCurrencyKey ?? UserSession.CurrencyKey} {amount:N2}".Trim();
+
+    #endregion
+
+    #region Dialog
+
+    private void OpenDialog(PeriodModel period, DialogMode mode)
+    {
+        __target = period;
+        __mode = mode;
+        __ack = false;
+        __reason = null;
+        __checks = mode == DialogMode.Close ? BuildChecks(period) : [];
+    }
+
+    private void CloseDialog()
+    {
+        if (__isBusy) return;
+        __target = null;
+    }
+
+    /// <summary>The checklist shown before a period is closed. The database repeats the hard rules.</summary>
+    private List<Check> BuildChecks(PeriodModel period)
+    {
+        var checks = new List<Check>
+        {
+            new("ok", $"{period.flngRecords:N0} active {(period.flngRecords == 1 ? "record" : "records")} will be locked")
+        };
+
+        var earlierOpen = __periods
+            .Where(p => p.flngNumber < period.flngNumber && !p.IsLocked && p.flngRecords > 0)
+            .Select(p => p.Name).ToList();
+
+        checks.Add(earlierOpen.Count > 0
+            ? new("bad", $"Close the earlier period first: {string.Join(", ", earlierOpen)}")
+            : new("ok", period.flngNumber > 1 ? $"Earlier periods in {period.flngYear} are closed" : "Earlier years are checked when you close"));
+
+        if (period.fdtmEnd.Date >= Today)
+            checks.Add(new("warn", $"This period ends on {period.fdtmEnd:d MMM yyyy}. Closing now also locks the days still to come."));
+
+        return checks;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (__target is null || !CanConfirm) return;
+
+        var target = __target;
+        var who = UserSession.Username ?? "";
+
+        try
+        {
+            __isBusy = true;
+            __busyMessage = __mode == DialogMode.Close ? "Closing period" : "Reopening period";
+
+            var result = __mode == DialogMode.Close
+                ? await PeriodRepository.ClosePeriod(target, who, UserSession.IsSystemAdmin, __cts.Token)
+                : await PeriodRepository.ReopenPeriod(target, __reason ?? "", who, UserSession.IsSystemAdmin, __cts.Token);
+
+            ToastService.Show(result.ToastType, result.Message!);
+
+            if (result.IsSuccess)
+                __target = null;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            __isBusy = false;
+        }
+
+        // Whatever happened, show what is true now.
+        await LoadAsync("Refreshing periods");
+    }
+
+    #endregion
+}

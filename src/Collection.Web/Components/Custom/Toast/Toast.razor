@@ -1,0 +1,128 @@
+@implements IDisposable
+@if (IsVisible)
+{
+    <div class="app-toast-wrapper" role="status" aria-live="polite">
+        <div class="app-toast app-toast--@ToastColor @(_exiting ? "app-toast--exit" : "app-toast--enter")">
+            <!-- Left accent bar -->
+            <div class="app-toast__bar app-toast__bar--@ToastColor"></div>
+
+            <div class="app-toast__body">
+                <!-- Row 1: icon + header text + close -->
+                <div class="app-toast__header">
+                    <div class="app-toast__icon app-toast__icon--@ToastColor">
+                        <svg width="18" height="18" role="img" aria-label="@AriaLabel">
+                            <use href="@IconHref" />
+                        </svg>
+                    </div>
+                    <span class="app-toast__label app-toast__label--@ToastColor">@ToastLabel</span>
+                    <button class="app-toast__close" aria-label="Close" @onclick="CloseToast">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor"
+                                  stroke-width="1.8" stroke-linecap="round" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Row 2: message -->
+                <div class="app-toast__message">@Message</div>
+            </div>
+
+            @* Progress bar - disabled. Remove this comment (and the one in Toast.razor.css) to bring it back.
+            <div class="app-toast__progress app-toast__progress--@ToastColor"
+                 style="animation-duration: @(AutoCloseDelay)ms">
+            </div>
+            *@
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public ToastTypeModel Type { get; set; }
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public int AutoCloseDelay { get; set; } = 4000;
+
+    #region Private Fields
+
+    private CancellationTokenSource? _cts;
+    private bool _exiting = false;
+    private bool _disposed = false;
+
+    #endregion
+
+    private bool IsVisible =>
+        Type != ToastTypeModel.None && !string.IsNullOrWhiteSpace(Message);
+
+    private string ToastColor => Type switch
+    {
+        ToastTypeModel.Success => "success",
+        ToastTypeModel.Warning => "warning",
+        ToastTypeModel.Danger => "danger",
+        ToastTypeModel.Primary => "primary",
+        _ => "info"
+    };
+
+    private string ToastLabel => Type switch
+    {
+        ToastTypeModel.Success => "Success",
+        ToastTypeModel.Warning => "Warning",
+        ToastTypeModel.Danger => "Error",
+        ToastTypeModel.Primary => "Notice",
+        _ => "Info"
+    };
+
+    private string IconHref => Type switch
+    {
+        ToastTypeModel.Success => "#check-circle-fill",
+        ToastTypeModel.Warning => "#exclamation-triangle-fill",
+        ToastTypeModel.Danger => "#exclamation-triangle-fill",
+        _ => "#info-fill"
+    };
+
+    private string AriaLabel => $"{Type} notification";
+
+    protected override void OnParametersSet()
+    {
+        _cts?.Cancel();
+        _exiting = false;
+
+        if (IsVisible)
+        {
+            _cts = new CancellationTokenSource();
+            _ = AutoCloseAsync(_cts.Token);
+        }
+    }
+
+    private async Task AutoCloseAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(AutoCloseDelay, token);
+            if (!token.IsCancellationRequested)
+                await CloseToast();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    /// <summary>Plays the exit animation, then tells the container to remove the toast.</summary>
+    private async Task CloseToast()
+    {
+        _cts?.Cancel();
+        _exiting = true;
+        StateHasChanged();
+        await Task.Delay(300); // wait for exit animation
+
+        // BUG FIX: the component can be disposed during the animation (user navigated away);
+        // calling back into a disposed parent threw an exception.
+        if (!_disposed)
+            await OnClose.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

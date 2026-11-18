@@ -1,0 +1,131 @@
+@* ThemeToggle – Windows 11 style theme switcher (System / Light / Dark).
+   - Persists the choice in the browser (localStorage key "portal-theme").
+   - The CSS variables are applied by /js/theme.js on <html data-theme>. *@
+@implements IDisposable
+@inject IJSRuntime JS
+@inject ThemeService Theme
+
+<div class="tt-wrap">
+    @if (__open)
+    {
+        <div class="tt-overlay" @onclick="Close"></div>
+    }
+
+    <button type="button"
+            class="tt-button"
+            title="Theme: @Label(__mode)"
+            aria-haspopup="menu"
+            aria-expanded="@__open"
+            @onclick="Toggle">
+        @((MarkupString)Icons.Get(__resolvedDark ? "moon" : "sun", "currentColor", 18))
+    </button>
+
+    @if (__open)
+    {
+        <div class="tt-menu" role="menu" aria-label="Choose theme">
+            <div class="tt-title">Appearance</div>
+
+            @foreach (var option in __options)
+            {
+                <button type="button"
+                        role="menuitemradio"
+                        aria-checked="@(__mode == option.Mode)"
+                        class="tt-option @(__mode == option.Mode ? "selected" : "")"
+                        @onclick="() => Select(option.Mode)">
+                    <span class="tt-option-icon">@((MarkupString)Icons.Get(option.Icon, "currentColor", 16))</span>
+                    <span class="tt-option-label">@option.Label</span>
+                    @if (__mode == option.Mode)
+                    {
+                        <span class="tt-check">@((MarkupString)Icons.Get("check", "currentColor", 14))</span>
+                    }
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    #region Private Fields
+
+    private sealed record ThemeOption(ThemeMode Mode, string Label, string Icon);
+
+    private readonly ThemeOption[] __options =
+    [
+        new(ThemeMode.System, "Use system setting", "monitor"),
+        new(ThemeMode.Light, "Light", "sun"),
+        new(ThemeMode.Dark, "Dark", "moon")
+    ];
+
+    private bool __open;
+    private bool __resolvedDark;
+    private ThemeMode __mode = ThemeMode.System;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override void OnInitialized()
+    {
+        // Other components (or a second toggle) can change the theme – stay in sync.
+        __mode = Theme.Mode;
+        Theme.OnChange += HandleThemeChanged;
+    }
+
+    /// <summary>The browser owns the stored value, so read it once the circuit is connected.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var stored = await JS.InvokeAsync<string>("portalTheme.getMode");
+            var resolved = await JS.InvokeAsync<string>("portalTheme.getResolved");
+
+            Theme.SetMode(ThemeService.Parse(stored));
+            __mode = Theme.Mode;
+            __resolvedDark = resolved == "dark";
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException) { /* circuit closed */ }
+        catch (InvalidOperationException) { /* JS not available during prerender */ }
+    }
+
+    public void Dispose() => Theme.OnChange -= HandleThemeChanged;
+
+    #endregion
+
+    #region Event Handlers
+
+    private void Toggle() => __open = !__open;
+
+    private void Close() => __open = false;
+
+    private async Task Select(ThemeMode mode)
+    {
+        __open = false;
+
+        try
+        {
+            var resolved = await JS.InvokeAsync<string>("portalTheme.setMode", mode.ToString().ToLowerInvariant());
+            __resolvedDark = resolved == "dark";
+        }
+        catch (JSDisconnectedException) { return; }
+
+        Theme.SetMode(mode);   // raises OnChange for any other listener
+    }
+
+    private void HandleThemeChanged()
+    {
+        __mode = Theme.Mode;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static string Label(ThemeMode mode) => mode switch
+    {
+        ThemeMode.Light => "Light",
+        ThemeMode.Dark => "Dark",
+        _ => "System"
+    };
+
+    #endregion
+}

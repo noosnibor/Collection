@@ -1,0 +1,544 @@
+/* CategorySummary.razor.css - Scoped styles */
+
+.cs-container {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    padding: 1rem 0;
+}
+
+/* Header */
+.cs-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.cs-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin: 0 0 4px;
+}
+
+.cs-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.cs-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-3);
+    background: var(--surface-3);
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
+.cs-header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.cs-usd-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text-3);
+    cursor: pointer;
+    user-select: none;
+}
+
+    .cs-usd-toggle input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: var(--accent);
+        cursor: pointer;
+    }
+
+.cs-export {
+    display: flex;
+    gap: 6px;
+}
+
+.cs-export-btn {
+    font: inherit;
+    font-size: 12px;
+    color: var(--text-3);
+    background: var(--surface);
+    border: 0.5px solid rgba(0, 0, 0, 0.2);
+    border-radius: 7px;
+    padding: 5px 11px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+    .cs-export-btn:hover {
+        border-color: rgba(0, 0, 0, 0.4);
+        background: var(--surface-2);
+    }
+
+    .cs-export-btn:active {
+        transform: scale(0.98);
+    }
+
+    .cs-export-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    .cs-export-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+
+/* Cards grid */
+.cs-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 1rem;
+}
+
+/* Responsive: drop to fewer columns on narrower screens */
+@media (max-width: 900px) {
+    .cs-cards-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .cs-cards-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 400px) {
+    .cs-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.cs-card {
+    background: var(--surface);
+    border: 0.5px solid rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    padding: 16px;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.cs-card-clickable {
+    cursor: pointer;
+}
+
+    .cs-card-clickable:hover {
+        border-color: rgba(0, 0, 0, 0.3);
+    }
+
+    .cs-card-clickable:active {
+        transform: scale(0.99);
+    }
+
+    .cs-card-clickable:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+.cs-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.cs-icon-tile {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.cs-card-label {
+    font-size: 13px;
+    color: var(--text-3);
+}
+
+.cs-card-value {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0;
+    color: var(--text);
+}
+
+.cs-card-value-minor {
+    font-size: 14px;
+    color: var(--text-3);
+}
+
+.cs-progress-track {
+    margin-top: 10px;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.cs-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+
+.cs-card-percent {
+    font-size: 11px;
+    color: var(--text-3);
+    margin: 6px 0 0;
+}
+
+/* Summary card */
+.cs-summary-card {
+    background: var(--surface);
+    border: 0.5px solid rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.cs-summary-head {
+    padding: 14px 18px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cs-summary-head-label {
+    font-size: 13px;
+    color: var(--text-3);
+    font-weight: 500;
+}
+
+.cs-summary-head-meta {
+    font-size: 12px;
+    color: var(--text-3);
+}
+
+.cs-summary-body {
+    padding: 18px;
+}
+
+.cs-stacked-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 14px;
+}
+
+    .cs-stacked-bar > div {
+        transition: width 0.3s ease;
+    }
+
+.cs-legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.cs-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cs-legend-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+
+.cs-legend-text {
+    font-size: 12px;
+    color: var(--text-3);
+}
+
+/* Date-range breakdown table */
+.cs-range-card {
+    margin-bottom: 1rem;
+}
+
+.cs-range-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+    .cs-range-table thead th {
+        text-align: left;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        padding: 12px 18px;
+        border-bottom: 0.5px solid rgba(0, 0, 0, 0.15);
+    }
+
+    .cs-range-table th.cs-range-num,
+    .cs-range-num {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .cs-range-table tbody td {
+        padding: 12px 18px;
+        border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+        color: var(--text);
+        vertical-align: middle;
+    }
+
+    .cs-range-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+.cs-range-period {
+    font-weight: 500;
+}
+
+.cs-range-sub {
+    color: var(--text-3);
+    margin-left: 8px;
+    font-size: 12px;
+}
+
+/* Period subtotal row */
+.cs-range-group td {
+    background: var(--surface-2);
+}
+
+.cs-range-group-clickable {
+    cursor: pointer;
+}
+
+    .cs-range-group-clickable:hover td {
+        background: var(--surface-3);
+    }
+
+    .cs-range-group-clickable:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+    }
+
+.cs-range-period-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cs-range-chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-3);
+    transition: transform 0.15s ease;
+}
+
+.cs-range-chevron-open {
+    transform: rotate(90deg);
+}
+
+/* Collection-type rows nested under a period */
+.cs-range-line td {
+    padding-top: 9px;
+    padding-bottom: 9px;
+}
+
+.cs-range-line-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 16px;
+    color: var(--text-3);
+}
+
+.cs-range-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.cs-range-minor {
+    font-size: 12px;
+    color: var(--text-3);
+}
+
+.cs-range-table tfoot td {
+    padding: 14px 18px;
+    background: var(--surface-3);
+    border-top: 0.5px solid rgba(0, 0, 0, 0.15);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-3);
+}
+
+/* Total row */
+.cs-total {
+    padding: 18px;
+    background: var(--surface-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.cs-total-label {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin: 0 0 4px;
+}
+
+.cs-total-sub {
+    font-size: 11px;
+    color: var(--text-3);
+    margin: 0;
+}
+
+.cs-total-value {
+    font-size: 26px;
+    font-weight: 500;
+    margin: 0;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+.cs-total-value-minor {
+    font-size: 16px;
+    color: var(--text-3);
+}
+
+/* Dark mode */
+/*@media (prefers-color-scheme: light) {
+    .cs-container,
+    .cs-title,
+    .cs-card-value,
+    .cs-total-value {
+        color: var(--surface-3);
+    }
+
+    .cs-card,
+    .cs-summary-card {
+        background: #1f1f1e;
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .cs-summary-head {
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .cs-total,
+    .cs-badge {
+        background: #2a2a28;
+    }
+
+    .cs-progress-track {
+        background: #2a2a28;
+    }
+
+    .cs-card-label,
+    .cs-summary-head-label,
+    .cs-legend-text,
+    .cs-total-label,
+    .cs-badge {
+        color: var(--text-3);
+    }
+
+    .cs-eyebrow,
+    .cs-card-percent,
+    .cs-summary-head-meta,
+    .cs-total-sub,
+    .cs-card-value-minor,
+    .cs-total-value-minor {
+        color: var(--text-3);
+    }
+}*/
+
+.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+
+.formcheckinput {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 36px;
+    height: 20px;
+    background: var(--border-strong);
+    border-radius: 999px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    margin: 0 !important;
+    border: none;
+    outline: none;
+    flex-shrink: 0;
+}
+
+
+    .formcheckinput::before {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: var(--surface);
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s ease;
+    }
+
+
+    .formcheckinput:checked {
+        background: var(--accent);
+    }
+
+        .formcheckinput:checked::before {
+            transform: translateX(16px);
+        }
+
+
+    .formcheckinput:focus-visible {
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    }
+
+.formchecklabel {
+    margin: 0;
+    line-height: 1;
+    font-size: 14px;
+    color: var(--text-2);
+    cursor: pointer;
+    user-select: none;
+}

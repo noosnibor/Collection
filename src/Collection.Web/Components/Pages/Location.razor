@@ -1,0 +1,288 @@
+@page "/LOCMR2YB"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ILocationRepository LocationRepository
+@inject UserSessionService UserSession
+@inject ILogService<Location> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "Location.View")]
+
+<!-- Loading overlay shown while a record is being saved -->
+<Spinner IsVisible="@__isSaving" Message="Saving Location Record" />
+
+<!-- Page banner -->
+<Banner Title="Location Management"
+        Subtitle="Organize, track, and manage all locations in the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <!-- ===================== Location form ===================== -->
+                <EditForm Model="__locationParameter" OnValidSubmit="OnValidSubmit">
+                    <DataAnnotationsValidator />
+
+                    <div class="row">
+                        <!-- Form fields -->
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Location Key</label>
+                                <InputText class="input" @bind-Value="__locationParameter.fstrLocation" MaxLength="3" />
+                                <ValidationMessage For="@(() => __locationParameter.fstrLocation)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Location Name</label>
+                                <InputText class="input" @bind-Value="__locationParameter.fstrDescription" />
+                                <ValidationMessage For="@(() => __locationParameter.fstrDescription)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Location Address</label>
+                                <InputText class="input" @bind-Value="__locationParameter.fstrAddress" />
+                                <ValidationMessage For="@(() => __locationParameter.fstrAddress)" />
+                            </div>
+
+                            <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                                <input class="formcheckinput" type="checkbox" @bind="__locationParameter.fblnActive">
+                                <label class="formchecklabel mb-0 label">Activate</label>
+                            </div>
+
+                            <!-- Action buttons -->
+                            @if (__isEditMode)
+                            {
+                                <AuthorizeView Policy="Location.Update" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-warning text-white" type="submit">Update Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+                            else
+                            {
+                                <AuthorizeView Policy="Location.Add" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-success" type="submit">Save Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+
+                        </div>
+
+                        <!-- Live preview of the record being edited -->
+                        <div class="col-md-6">
+                            <InfoCard Model="@__locationParameter"
+                                      Title="Review Location"
+                                      Subtitle="Ensure that the data entered is correct before submitting"
+                                      Img="/img/location.png" />
+                        </div>
+                    </div>
+                </EditForm>
+
+                <!-- ===================== Location table ===================== -->
+                <div class="mt-5">
+                    <Table TItem="LocationModel"
+                           Items="__locationModel"
+                           Title="Locations"
+                           OnRowClick="SelectedLocation"
+                           SearchFilter="SearchLocation"
+                           AllowFiltering="true"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           ColumnSpan="5"
+                           IsInactive="@(u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Location Code</th>
+                            <th>Location Name</th>
+                            <th>Location Address</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="location">
+                            <td>@location.fstrLocation</td>
+                            <td>@location.fstrDescription</td>
+                            <td class="text-muted">@location.fstrAddress</td>
+                            <td>
+                                <span class="badge @(location.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                    @(location.fblnActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                @LocalTime.ToLocal(location.fdtmWhen).ToString("MMM dd, yyyy hh:mm:ss tt")
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The form model bound to the add / edit form.</summary>
+    private LocationDataTransferObject __locationParameter = new();
+
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>True while a save is in progress (drives the spinner).</summary>
+    private bool __isSaving;
+
+    /// <summary>True when an existing row is being edited (update instead of insert).</summary>
+    private bool __isEditMode;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __locationParameter = NewLocation();
+        await LoadLocationsAsync();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads every location from the database.</summary>
+    private async Task LoadLocationsAsync()
+    {
+        try
+        {
+            __locationModel = await LocationRepository.SelectLocation();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load locations", ex);
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>A blank form model stamped with the signed-in user.</summary>
+    private LocationDataTransferObject NewLocation() => new() { fstrWho = UserSession.Username };
+
+    /// <summary>Clears the form back to a blank record and reloads the table.</summary>
+    private async Task ResetProperties()
+    {
+        __locationParameter = NewLocation();
+        __isSaving = false;
+        __isEditMode = false;
+
+        await LoadLocationsAsync();
+    }
+
+    /// <summary>Loads a clicked row into the form for editing.</summary>
+    private void SelectedLocation(LocationModel location)
+    {
+        __isEditMode = true;
+        __locationParameter = new()
+        {
+            flngKey = location.flngKey,
+            fstrLocation = location.fstrLocation,
+            fstrDescription = location.fstrDescription,
+            fstrAddress = location.fstrAddress,
+            fblnActive = location.fblnActive,
+            fstrWho = location.fstrWho,
+            fdtmWhen = location.fdtmWhen
+        };
+    }
+
+    /// <summary>Inserts a new record or updates the selected one.</summary>
+    private async Task OnValidSubmit()
+    {
+        if (__isSaving) return;   // protects against a double click
+
+        if (string.IsNullOrWhiteSpace(__locationParameter.fstrLocation))
+        {
+            ToastService.ShowWarning("Please enter a location key");
+            return;
+        }
+
+        __isSaving = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            var message = await LocationRepository.AddOrUpdateLocation(__locationParameter, insert: !__isEditMode);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the location", ex);
+        }
+        finally
+        {
+            __isSaving = false;
+        }
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Filters the table by code, name or address.</summary>
+    private bool SearchLocation(LocationModel location, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        return Contains(location.fstrLocation, searchText)
+            || Contains(location.fstrDescription, searchText)
+            || Contains(location.fstrAddress, searchText);
+    }
+
+    private static bool Contains(string? source, string searchText) =>
+        source?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false;
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

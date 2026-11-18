@@ -1,0 +1,7 @@
+@* RedirectToLogin – sends an anonymous visitor to the portal home page. *@
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized() =>
+        Navigation.NavigateTo("/login?msg=session_expired", replace: true);
+}

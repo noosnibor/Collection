@@ -1,0 +1,96 @@
+@typeparam TItem
+
+<div class="search-wrap" @onfocusout="HandleFocusOut">
+    <div class="search-box @(IsOpen ? "open" : "")">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text"
+               class="search-input"
+               placeholder="@Placeholder"
+               value="@Query"
+               @oninput="OnInput"
+               @onfocus="OnFocus" />
+    </div>
+
+    @if (IsOpen && Matches.Any())
+    {
+        <div class="search-dropdown">
+            @foreach (var item in Matches)
+            {
+                <button type="button" class="search-item" @onmousedown="() => SelectItem(item)" @onmousedown:preventDefault="true">
+                    <span class="item-label">@LabelSelector(item)</span>
+                    @if (SubLabelSelector is not null)
+                    {
+                        <span class="item-sublabel">@SubLabelSelector(item)</span>
+                    }
+                </button>
+            }
+        </div>
+    }
+    else if (IsOpen && Query.Trim().Length > 0)
+    {
+        <div class="search-dropdown">
+            <div class="search-empty">No matches found</div>
+        </div>
+    }
+</div>
+
+@code {
+    /// The full list of items to search against.
+    [Parameter, EditorRequired] public List<TItem> Items { get; set; } = new();
+
+    /// Text used to match the search query against each item.
+    [Parameter, EditorRequired] public Func<TItem, string> SearchTextSelector { get; set; } = default!;
+
+    /// Bold label shown for each row (e.g. full name).
+    [Parameter, EditorRequired] public Func<TItem, string> LabelSelector { get; set; } = default!;
+
+    /// Optional muted text shown on the right of each row (e.g. category).
+    [Parameter] public Func<TItem, string>? SubLabelSelector { get; set; }
+
+    /// Fired when the user picks an item.
+    [Parameter] public EventCallback<TItem> OnItemSelected { get; set; }
+
+    /// Max number of suggestions shown at once.
+    [Parameter] public int MaxResults { get; set; } = 6;
+
+    [Parameter] public string Placeholder { get; set; } = "";
+
+    private string Query { get; set; } = "";
+    private bool IsOpen { get; set; } = false;
+
+    private List<TItem> Matches =>
+        string.IsNullOrWhiteSpace(Query)
+            ? new List<TItem>()
+            : Items
+                .Where(item => SearchTextSelector(item).Contains(Query, StringComparison.OrdinalIgnoreCase))
+                .Take(MaxResults)
+                .ToList();
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        Query = e.Value?.ToString() ?? "";
+        IsOpen = true;
+    }
+
+    private void OnFocus()
+    {
+        IsOpen = true;
+    }
+
+    private async Task SelectItem(TItem item)
+    {
+        Query = "";
+        IsOpen = false;
+        await OnItemSelected.InvokeAsync(item);
+    }
+
+    private async Task HandleFocusOut()
+    {
+        // Short delay so keyboard/touch selection can finish before the list closes.
+        await Task.Delay(200);
+        IsOpen = false;
+    }
+}

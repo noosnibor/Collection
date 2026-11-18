@@ -1,0 +1,95 @@
+<div class="attr-card @(StretchToParent ? "attr-card--stretch" : "")">
+
+    <!-- Header -->
+    <div class="attr-card-header">
+        <div class="title-wrap">
+            @if (TitleIcon != null)
+            {
+                <span class="title-icon" style="@GetIconStyle()">
+                    @((MarkupString)GetIconSvg(TitleIcon, TitleIconColor ?? "currentColor", 24))
+                </span>
+            }
+            <span class="title" style="@GetTitleStyle()">@Title</span>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ActionText))
+        {
+            <button class="action-btn" @onclick="OnActionClick">
+                @ActionText
+            </button>
+        }
+    </div>
+
+    <!-- Body -->
+    <div class="attr-card-body">
+        @if (Items != null && Items.Any())
+        {
+            @foreach (var item in Items)
+            {
+                <div class="attr-row">
+                    <span class="label">@item.Label</span>
+                    <span class="colon">:</span>
+
+                    @if (item.IsLink)
+                    {
+                        <a href="#" @onclick="() => item.OnClick?.Invoke()">
+                            @item.Value
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="value">@item.Value</span>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            @ChildContent
+        }
+    </div>
+
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Attributes";
+    [Parameter] public string? TitleColor { get; set; }
+    [Parameter] public string? ActionText { get; set; }
+    [Parameter] public EventCallback OnActionClick { get; set; }
+    [Parameter] public bool StretchToParent { get; set; } = false;
+    [Parameter] public List<CardItem>? Items { get; set; }
+
+    // 🔥 Dynamic icon support
+    [Parameter] public string? TitleIcon { get; set; }
+    [Parameter] public string? TitleIconColor { get; set; }
+
+    // optional custom content
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string GetIconStyle()
+    {
+        return !string.IsNullOrWhiteSpace(TitleIconColor)
+            ? $"color: {TitleIconColor};"
+            : "";
+    }
+
+    private string GetTitleStyle()
+    {
+        return !string.IsNullOrWhiteSpace(Title)
+            ? $"color: {TitleColor};"
+            : "";
+    }
+
+    public class CardItem
+    {
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public bool IsLink { get; set; }
+        public Action? OnClick { get; set; }
+    }
+
+    #region Icon helper
+    private string GetIconSvg(string icon, string color, int size) => Icons.Get(icon, color, size);
+    #endregion
+
+}

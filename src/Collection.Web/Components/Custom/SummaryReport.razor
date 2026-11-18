@@ -1,0 +1,237 @@
+﻿@typeparam TItem
+@using System.Globalization
+@using Microsoft.JSInterop
+@inject ReportExportService Export
+@inject IJSRuntime JS
+
+<div class="report" style="--report-cols:@_measures.Count">
+    <div class="report__accent"></div>
+
+    <header class="report__top">
+        <div>
+            <h2 class="report__title">@Title</h2>
+            <p class="report__subtitle">Grouped by <span class="report__by">@_active.Header.ToLowerInvariant()</span></p>
+        </div>
+        <div class="report__exports" role="group" aria-label="Export report">
+            @if (ConvertLabel is not null)
+            {
+                <button type="button"
+                        class="btn btn--convert @(IsConverted ? "btn--convert-on" : "")"
+                        aria-pressed="@(IsConverted ? "true" : "false")"
+                        disabled="@ConvertDisabled"
+                        title="@ConvertTitle"
+                        @onclick="OnConvert">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M2 5.5h10.5M10 3l2.5 2.5L10 8M14 10.5H3.5M6 8l-2.5 2.5L6 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    @ConvertLabel
+                </button>
+                <span class="report__exports-sep" aria-hidden="true"></span>
+            }
+            <button type="button" class="btn" @onclick='() => Download("csv")'>CSV</button>
+            <button type="button" class="btn" @onclick='() => Download("xlsx")'>Excel</button>
+            <button type="button" class="btn btn--accent" @onclick='() => Download("pdf")'>PDF</button>
+        </div>
+    </header>
+
+    @if (_primaryKey.Length > 0)
+    {
+        <section class="kpi">
+            <div>
+                <span class="kpi__label">Total @_measures[0].Header.ToLowerInvariant()</span>
+                <span class="kpi__value">@Fmt(_measures[0], _result.GrandTotals[_primaryKey])</span>
+                <span class="kpi__meta">
+                    @_result.GrandCount records across @_result.Groups.Count @(_active.Header.ToLowerInvariant())@(_result.Groups.Count == 1 ? "" : "s")
+                </span>
+                @if (IsConverted && !string.IsNullOrWhiteSpace(ConvertNote))
+                {
+                    <span class="kpi__rate">@ConvertNote</span>
+                }
+            </div>
+            @if (_result.Groups.Count > 0)
+            {
+                var top = _result.Groups[0];
+                <div class="kpi__top">
+                    <div class="kpi__top-label">Top contributor</div>
+                    <div class="kpi__top-name">
+                        <svg class="dot" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+                            <circle cx="5.5" cy="5.5" r="5.5" fill="@HueFor(top.Key)" />
+                        </svg>@top.Key
+                    </div>
+                   @*  <div class="kpi__top-share">@top.Share.ToString("P0", _culture) of total</div> *@
+                </div>
+            }
+        </section>
+    }
+
+    <div class="report__controls">
+        <span class="report__ctrl-label">Summarize by</span>
+        <div class="seg" role="tablist" aria-label="Group by">
+            @foreach (var d in _dimensions)
+            {
+                var on = d.Key == _active.Key;
+                <button type="button"
+                        role="tab"
+                        aria-selected="@(on ? "true" : "false")"
+                        class="seg__btn @(on ? "seg__btn--on" : "")"
+                        @onclick="() => SetDimension(d)">
+                    @d.Header
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="table">
+        <div class="tr tr--head">
+            <span class="th"></span>
+            <span class="th th--dim">@_active.Header</span>
+            <span class="th th--num">Records</span>
+            @foreach (var m in _measures)
+            {
+                <span class="th th--num">@m.Header</span>
+            }
+           @*  <span class="th th--num">Percent</span> *@
+        </div>
+
+        @{
+            var rank = 0;
+        }
+        @foreach (var g in _result.Groups)
+        {
+            rank++;
+            <div class="tr tr--data" style="--share:@Pct(g.Share)">
+                <span class="rank">@rank.ToString("00")</span>
+                <span class="td td--dim">
+                    <svg class="dot" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+                        <circle cx="5.5" cy="5.5" r="5.5" fill="@HueFor(g.Key)" />
+                    </svg>
+                    <span class="td__label">@g.Key</span>
+                </span>
+                <span class="td td--num td__count">@g.Count</span>
+                @foreach (var m in _measures)
+                {
+                    <span class="td td--num"><span class="amt">@Fmt(m, g.Measures[m.Key])</span></span>
+                }
+                @* <span class="td td--num td__pct">@g.Share.ToString("P0", _culture)</span> *@
+            </div>
+        }
+
+        <div class="tr tr--total">
+            <span class="th"></span>
+            <span class="td td--dim">Grand total</span>
+            <span class="td td--num td__count">@_result.GrandCount</span>
+            @foreach (var m in _measures)
+            {
+                <span class="td td--num"><span class="amt">@Fmt(m, _result.GrandTotals[m.Key])</span></span>
+            }
+            @* <span class="td td--num td__pct">100%</span> *@
+        </div>
+
+        @if (_result.Groups.Count == 0)
+        {
+            <div class="empty">No records to summarize yet.</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "Summary report";
+    [Parameter, EditorRequired] public IEnumerable<TItem> Data { get; set; } = Array.Empty<TItem>();
+    [Parameter, EditorRequired] public List<ReportColumnModel<TItem>> Columns { get; set; } = new();
+
+    #region Currency convert toggle (optional)
+
+    /// <summary>Text of the convert button (e.g. "Convert to USD" / "Show in JMD"). Leave null to hide the button.</summary>
+    [Parameter] public string? ConvertLabel { get; set; }
+
+    /// <summary>True while the amounts are shown converted (the button looks pressed and the rate note shows).</summary>
+    [Parameter] public bool IsConverted { get; set; }
+
+    /// <summary>Disables the button, e.g. when no exchange rate exists.</summary>
+    [Parameter] public bool ConvertDisabled { get; set; }
+
+    /// <summary>Tooltip of the button.</summary>
+    [Parameter] public string? ConvertTitle { get; set; }
+
+    /// <summary>Small line under the total explaining the rate used, shown only while converted.</summary>
+    [Parameter] public string? ConvertNote { get; set; }
+
+    /// <summary>Raised when the convert button is clicked.</summary>
+    [Parameter] public EventCallback OnConvert { get; set; }
+
+    #endregion
+
+    /// <summary>Optional culture for number/percent formatting. Defaults to the current culture.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
+
+    private List<ReportColumnModel<TItem>> _dimensions = new();
+    private List<ReportColumnModel<TItem>> _measures = new();
+    private ReportColumnModel<TItem> _active = default!;
+    private SummaryResultModel _result = new();
+    private string _primaryKey = "";
+    private CultureInfo _culture = CultureInfo.CurrentCulture;
+
+    protected override void OnParametersSet()
+    {
+        _culture = Culture ?? CultureInfo.CurrentCulture;
+        _dimensions = Columns.Where(c => c.Role == ColumnRole.Dimension).ToList();
+        _measures = Columns.Where(c => c.Role == ColumnRole.Measure).ToList();
+
+        if (_dimensions.Count == 0)
+            throw new InvalidOperationException("SummaryReport needs at least one Dimension column.");
+
+        if (_active is null || _dimensions.All(d => d.Key != _active.Key))
+            _active = _dimensions[0];
+
+        _primaryKey = _measures.FirstOrDefault()?.Key ?? "";
+        Recompute();
+    }
+
+    private void SetDimension(ReportColumnModel<TItem> d)
+    {
+        _active = d;
+        Recompute();
+    }
+
+    private void Recompute() => _result = ReportEngineService.Summarize(Data, _active, _measures);
+
+    private string Fmt(ReportColumnModel<TItem> m, decimal v) => string.Format(_culture, m.Format, v);
+
+    private string Pct(double share) =>
+        (Math.Clamp(share, 0, 1) * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+
+    // Stable per-category colour so the same group always gets the same dot.
+    private static string HueFor(string s)
+    {
+        var h = 0;
+        foreach (var ch in s) h = (h * 31 + ch) % 360;
+        return $"hsl({Math.Abs(h)} 70% 60%)";
+    }
+
+    private async Task Download(string format)
+    {
+        var (bytes, mime, name) = format switch
+        {
+            "csv" => (Export.ToCsv(_result),
+                      "text/csv",
+                      $"{Slug(Title)}.csv"),
+            "xlsx" => (Export.ToExcel(_result, Title),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      $"{Slug(Title)}.xlsx"),
+            "pdf" => (Export.ToPdf(_result, Title,
+                          _measures.ToDictionary(m => m.Key, m => m.Format), _culture),
+                      "application/pdf",
+                      $"{Slug(Title)}.pdf"),
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
+
+        using var stream = new MemoryStream(bytes);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", name, mime, streamRef);
+    }
+
+    private static string Slug(string s) =>
+        string.Concat(s.Trim().ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '-'))
+            .Trim('-');
+}

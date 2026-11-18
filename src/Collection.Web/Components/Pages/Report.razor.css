@@ -1,0 +1,123 @@
+.filter-chip-section {
+    padding: 1rem 1.25rem 0;
+}
+
+.filter-section-label {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--accent);
+}
+
+.filter-hint {
+    font-size: 0.78rem;
+    color: var(--text-3);
+    margin-bottom: 0.75rem;
+}
+
+.chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-2);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-2);
+    transition: all 0.18s ease;
+    user-select: none;
+    white-space: nowrap;
+}
+
+    .filter-chip:hover {
+        border-color: var(--border);
+        background: var(--surface-3);
+        color: var(--accent);
+    }
+
+    .filter-chip.chip--active {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: var(--on-accent);
+        box-shadow: 0 2px 6px rgba(12, 63, 99, 0.25);
+    }
+
+    .filter-chip.chip--all {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+        .filter-chip.chip--all.chip--active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--on-accent);
+            box-shadow: 0 2px 6px rgba(13, 110, 253, 0.3);
+        }
+
+.chip-icon {
+    font-size: 0.9rem;
+    line-height: 1;
+}
+
+.chip-label {
+    line-height: 1;
+}
+
+.filter-params-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.25rem;
+}
+
+.filter-param-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1rem 1.1rem 1.1rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    transition: box-shadow 0.15s;
+}
+
+    .filter-param-card:hover {
+        box-shadow: 0 3px 10px rgba(12, 63, 99, 0.1);
+    }
+
+.filter-param-card--date-range {
+    grid-column: span 2;
+}
+
+@media (max-width: 600px) {
+    .filter-param-card--date-range {
+        grid-column: span 1;
+    }
+}
+
+.param-label {
+    display: block;
+    font-size: 16px;
+    font-weight: 700; /*
+    letter-spacing: 0.04em;*/
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+}
+
+.date-range-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+@media (max-width: 420px) {
+    .date-range-row {
+        grid-template-columns: 1fr;
+    }
+}

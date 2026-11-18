@@ -1,0 +1,8 @@
+/* FormSection – spacing and divider between groups of fields. */
+
+.form-section { padding: 22px 0; border-top: 1px solid var(--border); }
+    .form-section:first-child { padding-top: 0; border-top: 0; }
+
+.form-section__head { margin-bottom: 16px; }
+.form-section__title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.form-section__desc { margin: 3px 0 0; font-size: 13px; color: var(--text-3); }

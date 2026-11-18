@@ -1,0 +1,42 @@
+﻿@if (IsVisible)
+{
+    <div class="spinner-overlay">
+        <div class="spinner-wrapper">
+
+            <!-- Outer glow ring -->
+            <div class="spinner-ring">
+                <div class="spinner-arc"></div>
+                <div class="spinner-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2"
+                         xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="3" width="7" height="7" rx="1" />
+                        <rect x="14" y="3" width="7" height="7" rx="1" />
+                        <rect x="3" y="14" width="7" height="7" rx="1" />
+                        <rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Label -->
+            <p class="spinner-text">
+                @Message
+                @*  <span class="spinner-dots">
+                    <span></span><span></span><span></span>
+                </span> *@
+            </p>
+
+            <!-- Sub label -->
+            @* <p class="spinner-sub">TAJ Secure Portal</p> *@
+
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Controls whether the spinner is shown.</summary>
+    [Parameter] public bool IsVisible { get; set; }
+
+    /// <summary>Label shown beneath the spinner. Defaults to "Authenticating".</summary>
+    [Parameter] public string Message { get; set; } = "Loading";
+}

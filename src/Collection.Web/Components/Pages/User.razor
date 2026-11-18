@@ -1,0 +1,767 @@
+@page "/user"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject IUserRepository UserRepository
+@inject ILocationRepository LocationRepository
+@inject ICurrencyRepository CurrencyRepository
+@inject IPermissionRepository PermissionRepository
+@inject UserSessionService UserSession
+@inject ILogService<User> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "User.View")]
+
+<!-- Load Bar -->
+<Spinner IsVisible="@__isSubmitting" Message="Saving User Record" />
+<Spinner IsVisible="@__isSubmittingPermissions" Message="Saving User Permission" />
+
+<!-- Banner -->
+<Banner Title="User Management"
+        Subtitle="Manage the users that access the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+        <br />
+
+<!-- Tabs -->
+<Tabs @bind-ActiveTab="__currentTab">
+     <Tab Id="userdataentry" Label="User Data Entry" Icon="user-plus">
+         <Content>
+            <div class="row">
+                <div class="col-12">
+
+                    <EditForm Model="__parameter" OnValidSubmit="OnValidUserSubmit">
+                        <DataAnnotationsValidator />
+                        <div class="row">
+                            <div class="col-lg-7">
+
+                                @* ---------- Identity ---------- *@
+                                <FormSection Title="Identity" Description="Who this person is and how to reach them.">
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">First name <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrFirstname" />
+                                            <ValidationMessage For="@(() => __parameter.fstrFirstname)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Last name <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrLastname" />
+                                            <ValidationMessage For="@(() => __parameter.fstrLastname)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">User name <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrUsername" />
+                                            <ValidationMessage For="@(() => __parameter.fstrUsername)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Email address <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrEmailAddress" />
+                                            <ValidationMessage For="@(() => __parameter.fstrEmailAddress)" />
+                                        </div>
+                                    </div>
+                                </FormSection>
+
+                                @* ---------- Access ---------- *@
+                                <FormSection Title="Access" Description="What this person can open, and where.">
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Role <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.flngRoleKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.flngRoleKey">
+                                                <option value=""></option>
+                                                @foreach (var req in AssignableRoles)
+                                                {
+                                                    <option value="@req.Key">@req.Name</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.flngRoleKey)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Location <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.fstrLocationKey == "" ? "placeholder-shown" : "")}")" @bind-Value="__parameter.fstrLocationKey" @bind-Value:after="OnLocationChanged">
+                                                <option value=""></option>
+                                                @foreach (var req in __locationModel)
+                                                {
+                                                    <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.fstrLocationKey)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Currency</label>
+                                            <InputSelect class="@($"select {(__parameter.fstrCurrencyKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.fstrCurrencyKey" disabled>
+                                                <option value=""></option>
+                                                @foreach (var req in __currencyModel)
+                                                {
+                                                    <option value="@req.fstrCurrency">@req.fstrCurrencyType</option>
+                                                }
+                                            </InputSelect>
+                                            <div class="form-hint">Set from the location</div>
+                                            <ValidationMessage For="@(() => __parameter.fstrCurrencyKey)" />
+                                        </div>
+                                    </div>
+                                </FormSection>
+
+                                @* ---------- Sign-in ---------- *@
+                                <FormSection Title="Sign-in" Description="A temporary password must be changed at first sign-in.">
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Password <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrPassword" />
+                                            <div class="form-hint">@(__isUpdate ? "Leave as ******** to keep the current password." : "The user must change this at first sign-in.")</div>
+                                            <ValidationMessage For="@(() => __parameter.fstrPassword)" />
+                                        </div>
+                                        <div class="col-sm-6"></div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Start date <span class="req" aria-hidden="true">*</span></label>
+                                            <InputDate @bind-Value="__parameter.fdtmStart"
+                                                       max="@LocalTime.Today.ToString("yyyy-MM-dd")"
+                                                       class="date" />
+                                            <ValidationMessage For="@(() => __parameter.fdtmStart)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">End date <span class="req" aria-hidden="true">*</span></label>
+                                            <InputDate @bind-Value="__parameter.fdtmEnd" class="date" />
+                                            <ValidationMessage For="@(() => __parameter.fdtmEnd)" />
+                                        </div>
+                                    </div>
+
+                                    <div class="checkbox d-flex align-items-center gap-2 mt-4">
+                                        <input class="formcheckinput" type="checkbox" id="chk-active" @bind="__parameter.fblnActive">
+                                        <label class="formchecklabel mb-0 label" for="chk-active">Active (can sign in)</label>
+                                    </div>
+                                </FormSection>
+
+                                <div class="form-actions">
+                                    <button class="btn btn-success" type="submit">Save record</button>
+                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetUserProperties">Discard</button>
+                                </div>
+
+                            </div>
+
+                            <div class="col-lg-5 review-col">
+                                <InfoCard Model="@__parameter"
+                                          Title="Review user"
+                                          Subtitle="Check the details before you save"
+                                          Img="/img/user.png"
+                                          Exclude="@(["fblnPasswordChanged"])"
+                                          ValueOverrides="@__reviewNames" />
+
+                            </div>
+                        </div>
+
+                    </EditForm>
+
+
+
+
+                    <div class="mt-5">
+                        <Table TItem="UserModel"
+                               Items="VisibleUsers"
+                               OnRowClick="SelectedUser"
+                               Title="Users"
+                               SearchFilter="SearchUser"
+                               AllowFiltering="true"
+                               HeaderBackgroundColor="@Theme.TableHeaderColor"
+                               SumColumnIndex="7"
+                               ColumnSpan="9"
+                               IsInactive="@( u => !u.fblnActive)">
+
+                            <HeaderTemplate>
+                                <th>Full Name </th>
+                                <th>Email Address</th>
+                                <th>Location</th>
+                                <th>Role</th>
+                                <th>Active</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                            </HeaderTemplate>
+
+                            <RowTemplate Context="user">
+                                <td>
+                                    @user.fstrFirstname @user.fstrLastname
+                                </td>
+
+                                <td><span class="text-muted">@user.fstrEmailAddress</span></td>
+
+                                <td>@user.fstrLocationKey</td>
+                                <td><span class="text-muted">@StaticDataService.GetRoles().FirstOrDefault(x => x.Key == user.flngRoleKey)!.Name</span></td>
+                                <td>
+                                    <span class="badge @(user.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")  fs-12 p-1">@(user.fblnActive ? "Active" : "Not Active")</span>
+                                </td>
+                                <td><span class="text-muted">@user.fdtmStart.ToString("MMM dd, yyyy")</span></td>
+                                <td><span class="text-muted">@user.fdtmEnd.ToString("MMM dd, yyyy")</span></td>
+                            </RowTemplate>
+
+                        </Table>
+                    </div>
+
+                </div>
+            </div>
+         </Content>
+     </Tab>
+
+     <!-- Manage Permissions -->
+            <Tab Id="managepermission" Label="Manage Permission">
+
+                <ChildContent>
+                    <SubTabs Id="addpermission" Label="Add Permission">
+                        <Content>
+
+                        <table class="table table-sm mt-3">
+                            <thead class="table-header-small">
+                                <tr>
+                                    <th>Roles</th>
+                                    <th>Permissions</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in __parameterPermission)
+                                {
+                                    <tr>
+                                        <td>
+                                            <InputSelect class="form-control"
+                                                         @bind-Value="item.flngRoleKey"
+                                                         TValue="int?">
+                                                <option value=""></option>
+                                                @foreach (var r in PermissionRoles)
+                                                {
+                                                    <option value="@r.Key">@r.Name</option>
+                                                }
+                                            </InputSelect>
+                                        </td>
+                                        <td>
+                                            <InputSelect class="form-control"
+                                                         @bind-Value="item.flngPermissionKey"
+                                                         TValue="int?">
+                                                <option value=""></option>
+                                                @foreach (var r in StaticDataService.GetPermissions())
+                                                {
+                                                    <option value="@r.Key">@r.Description</option>
+                                                }
+                                            </InputSelect>
+                                        </td>
+
+                                        <td class="text-end" style="white-space: nowrap; width: 1px;">
+                                            <button class="btn btn-sm btn-success me-1"
+                                                    @onclick="() => AddRow()">
+                                                <span class="fs-5">+</span>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger"
+                                                    @onclick="() => RemoveRow(item)">
+                                                ✕
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <div class="section-header d-flex justify-content-between align-items-center">
+
+                            <div class="d-flex align-items-center">
+                            </div>
+
+                            <div>
+                                <button class="btn btn-success"
+                                        type="button"
+                                        disabled="@__isSubmittingPermissions"
+                                        @onclick="SavePermission">
+
+                                   
+                                        <span>Save Permission</span>
+                                   
+                                </button>
+
+                                <button class="btn btn-secondary border-0"
+                                        type="button"
+                                        @onclick="ResetProperties">
+                                    Discard
+                                </button>
+                            </div>
+                        </div>
+                        </Content>
+                    </SubTabs>
+
+                     <SubTabs Id="removepermission" Label="Remove Permission From Role">
+                        <Content>
+                        <Table TItem="PermissionModel"
+                                  Items="VisiblePermissions"
+                                  Title="Permissions"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                                  OnRowClick="SelectedPermission"
+                                  SearchFilter="SearchPermission"
+                                  ColumnSpan="3"
+                                  AllowFiltering="true">
+                            <HeaderTemplate>
+                                <th>Role Name</th>
+                                <th>Permission Name</th>
+                                <th></th>
+                            </HeaderTemplate>
+
+                            <RowTemplate Context="permission">
+                                <td>@StaticDataService.GetRoles().FirstOrDefault(r => r.Key == @permission.flngRoleKey)!.Name</td>
+                            <td>@StaticDataService.GetPermissions().FirstOrDefault(p => p.Key == permission.flngPermissionKey)!.Description</td>
+                                <td class="text-end" width="20px">
+                                    <button class="btn btn-sm btn-danger">
+                                        ✕
+                                    </button>
+                                </td>
+                            </RowTemplate>
+                        </Table>
+                        @if (__isToggleModel)
+                        {
+                            <div class="modal fade show d-block" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+
+                                        <div class="modal-header">
+                                            <h1 class="modal-title fs-5">
+                                                Delete Permission
+                                            </h1>
+
+                                            <button type="button"
+                                                    class="btn-close"
+                                                    @onclick="ToggleModel">
+                                            </button>
+                                        </div>
+
+                                        <div class="modal-body">
+                                            Are you sure you want to delete permission?
+                                        </div>
+
+                                        <div class="modal-footer">
+                                            <button type="button"
+                                                    class="btn btn-secondary"
+                                                    @onclick="ToggleModel">
+                                                Close
+                                            </button>
+
+                                            <button type="button"
+                                                    class="btn btn-danger"
+                                                    @onclick="DeletePermission">
+                                                Delete Permission
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-backdrop fade show"></div>
+                        }
+                        </Content>
+                    </SubTabs>
+                </ChildContent>
+            </Tab>
+</Tabs>
+
+@code {
+
+    #region Review panel
+
+    /// <summary>Readable role and location names for the review panel.</summary>
+    private IReadOnlyDictionary<string, string?> __reviewNames => new Dictionary<string, string?>
+    {
+        [nameof(UserDataTransferObject.flngRoleKey)] = StaticDataService.GetRoles().FirstOrDefault(r => r.Key == __parameter.flngRoleKey)?.Name,
+        [nameof(UserDataTransferObject.fstrLocationKey)] = __locationModel.FirstOrDefault(l => l.fstrLocation == __parameter.fstrLocationKey)?.fstrDescription
+    };
+
+    #endregion
+
+
+    #region Constants
+
+    /// <summary>
+    /// Shown in the password box while an EXISTING user is edited, instead of the stored value
+    /// (SECURITY FIX: the stored password / hash used to be loaded into a plain text box).
+    /// </summary>
+    private const string PasswordMask = "********";
+
+    #endregion
+
+    #region Private Fields
+
+    /// <summary>The tab currently shown ("userdataentry" or the permissions tab).</summary>
+    private string __currentTab = "userdataentry";
+
+    // ----- User form -----
+    private UserDataTransferObject __parameter = new();
+    private IEnumerable<UserModel> __userModel = [];
+    private IEnumerable<CurrencyModel> __currencyModel = [];
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>The stored password of the user being edited (re-sent unchanged unless a new one is typed).</summary>
+    private string? __existingPassword;
+    private bool __existingPasswordChanged;
+
+    private bool __isUpdate;
+    private bool __isSubmitting;
+
+    // ----- Permission form -----
+    private List<PermissionDataTransferObject> __parameterPermission = [];
+    private List<PermissionModel> __permissionModel = [];
+    private bool __isToggleModel;
+    private bool __isSubmittingPermissions;
+    private int __permissionKey;
+    private int __roleKey;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __parameter = NewUser();
+        AddRow();
+        await LoadData();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads locations, users, permissions and the currencies of the selected location.</summary>
+    private async Task LoadData()
+    {
+        try
+        {
+            await GetCurrency(__parameter.fstrLocationKey);
+            __locationModel = await LocationRepository.SelectLocation(active: true);
+            __userModel = await UserRepository.SelectUser();
+            __permissionModel = await PermissionRepository.SelectPermission();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load users", ex);
+        }
+    }
+
+    /// <summary>
+    /// A user's currency is the location's BASE currency (rate 1.00) that is in effect today.
+    /// </summary>
+    private async Task GetCurrency(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            __currencyModel = [];
+            return;
+        }
+
+        var today = LocalTime.Today;
+        var currencies = await CurrencyRepository.SelectCurrency(null, null, location, true);
+
+        __currencyModel = currencies
+            .Where(x => x.fcurAmount == 1 && x.fdtmEffectiveFrom.Date <= today && x.fdtmEffectiveTo.Date >= today)
+            .ToList();
+
+        var first = __currencyModel.FirstOrDefault();
+        if (first is not null)
+            __parameter.fstrCurrencyKey = first.fstrCurrency;
+    }
+
+    #endregion
+
+    #region User Form Actions
+
+    /// <summary>A blank user form stamped with the signed-in administrator.</summary>
+    private UserDataTransferObject NewUser() => new() { fstrWho = UserSession.Username ?? "Batch" };
+
+    /// <summary>Clears the user form and reloads the lists.</summary>
+    private async Task ResetUserProperties()
+    {
+        __parameter = NewUser();
+        __existingPassword = null;
+        __existingPasswordChanged = false;
+        __isUpdate = false;
+        __originalRoleKey = null;
+        __isSubmitting = false;
+
+        await LoadData();
+    }
+
+    /// <summary>Loads a table row into the form for editing.</summary>
+    private async Task SelectedUser(UserModel user)
+    {
+        __isUpdate = true;
+        __originalRoleKey = user.flngRoleKey;
+        __existingPassword = user.fstrPassword;
+        __existingPasswordChanged = user.fblnPasswordChanged;
+
+        __parameter = new()
+        {
+            flngKey = user.flngKey,
+            fstrUsername = user.fstrUsername ?? string.Empty,
+            fstrFirstname = user.fstrFirstname ?? string.Empty,
+            fstrLastname = user.fstrLastname ?? string.Empty,
+            fstrEmailAddress = user.fstrEmailAddress ?? string.Empty,
+            fstrLocationKey = user.fstrLocationKey ?? string.Empty,
+            flngRoleKey = user.flngRoleKey,
+            fstrCurrencyKey = user.fstrCurrencyKey,
+            fblnActive = user.fblnActive,
+            fdtmStart = user.fdtmStart,
+            fdtmEnd = user.fdtmEnd,
+            fstrPassword = PasswordMask,
+            // BUG FIX: this flag was not copied, so editing ANY user reset it to false and forced
+            // them to change their password again at the next sign-in.
+            fblnPasswordChanged = user.fblnPasswordChanged,
+            fstrWho = UserSession.Username ?? "Batch"
+        };
+
+        await GetCurrency(user.fstrLocationKey);
+    }
+
+    /// <summary>The role the user being edited already has (so an Administrator can still edit an existing Administrator).</summary>
+    private int? __originalRoleKey;
+
+    /// <summary>Administrator and System Admin roles can only be handed out by a System Admin.</summary>
+    private bool IsRestrictedRole(int? roleKey) =>
+        roleKey is StaticDataService.AdministratorRoleKey or StaticDataService.SystemAdminRoleKey;
+
+    /// <summary>True when the signed-in user is not allowed to give this role (unchanged roles on an existing user are fine).</summary>
+    private bool CannotAssignRole(int? roleKey) =>
+        IsRestrictedRole(roleKey) && !UserSession.IsSystemAdmin && !(__isUpdate && roleKey == __originalRoleKey);
+
+    /// <summary>Roles offered on the user form: Administrator and System Admin are only offered to a System Admin.</summary>
+    private IEnumerable<Roles> AssignableRoles =>
+        StaticDataService.GetRoles().Where(r => !CannotAssignRole(r.Key));
+
+    /// <summary>Saves the user (insert or update).</summary>
+    private async Task OnValidUserSubmit()
+    {
+        if (__isSubmitting) return;   // protects against a double click
+
+        __isSubmitting = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__parameter.fstrUsername))
+            {
+                ToastService.ShowWarning("Please enter a user name");
+                return;
+            }
+
+            // Only a System Admin may hand out the Administrator or System Admin role
+            // (the list hides them, this stops a forged value).
+            if (CannotAssignRole(__parameter.flngRoleKey))
+            {
+                ToastService.ShowWarning("Only a System Admin can give the Administrator or System Admin role");
+                return;
+            }
+
+            ApplyPasswordRules();
+
+            var message = await UserRepository.AddOrUpdateUser(__parameter, insert: !__isUpdate);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetUserProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the user", ex);
+        }
+        finally
+        {
+            __isSubmitting = false;
+        }
+    }
+
+    /// <summary>
+    /// Decides what password is sent to the database:
+    /// untouched mask  -> keep the stored password and its "changed" flag;
+    /// anything else   -> it is a new TEMPORARY password, so the user must change it at next sign-in.
+    /// </summary>
+    private void ApplyPasswordRules()
+    {
+        if (__isUpdate && __parameter.fstrPassword == PasswordMask)
+        {
+            __parameter.fstrPassword = __existingPassword ?? string.Empty;
+            __parameter.fblnPasswordChanged = __existingPasswordChanged;
+        }
+        else
+        {
+            __parameter.fblnPasswordChanged = false;
+        }
+    }
+
+    /// <summary>Reloads the currency when the location drop-down changes.</summary>
+    private async Task OnLocationChanged() => await GetCurrency(__parameter.fstrLocationKey);
+
+    /// <summary>Text filter for the users table (null-safe).</summary>
+    private bool SearchUser(UserModel user, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(user.fstrUsername)
+            || Has(user.fstrFirstname)
+            || Has(user.fstrLastname)
+            || Has(user.fstrEmailAddress)
+            || Has(user.fstrLocationKey)
+            || Has(RoleName(user.flngRoleKey));
+    }
+
+    private static string? RoleName(int key) =>
+        StaticDataService.GetRoles().FirstOrDefault(x => x.Key == key)?.Name;
+
+    #endregion
+
+    #region Permission Actions
+
+    private void AddRow() => __parameterPermission.Add(new PermissionDataTransferObject());
+
+    private void RemoveRow(PermissionDataTransferObject item)
+    {
+        __parameterPermission.Remove(item);
+
+        // Always keep one empty row so the table never disappears.
+        if (__parameterPermission.Count == 0)
+            AddRow();
+    }
+
+    /// <summary>The user list, without System Admin users unless a System Admin is looking.</summary>
+    private IEnumerable<UserModel> VisibleUsers => __userModel.Where(u => !IsHiddenRole(u.flngRoleKey));
+
+    /// <summary>The System Admin role (and its permissions) is only visible to a System Admin.</summary>
+    private bool IsHiddenRole(int? roleKey) =>
+        roleKey == StaticDataService.SystemAdminRoleKey && !UserSession.IsSystemAdmin;
+
+    /// <summary>Roles whose permissions can be managed: everyone who reaches this tab sees all roles except System Admin.</summary>
+    private IEnumerable<Roles> PermissionRoles =>
+        StaticDataService.GetRoles().Where(r => !IsHiddenRole(r.Key));
+
+    /// <summary>Existing permission rows, without the System Admin rows unless a System Admin is looking.</summary>
+    private IEnumerable<PermissionModel> VisiblePermissions =>
+        __permissionModel.Where(p => !IsHiddenRole(p.flngRoleKey));
+
+    /// <summary>Grants the chosen permissions to the chosen roles.</summary>
+    private async Task SavePermission()
+    {
+        if (__isSubmittingPermissions) return;
+
+        // BUG FIX: the keys are nullable – an unselected drop-down is null, not 0, so rows with
+        // nothing selected used to slip through this check.
+        if (__parameterPermission.Any(r => r.flngPermissionKey is null or 0 || r.flngRoleKey is null or 0))
+        {
+            ToastService.ShowError("All roles and permissions are required.");
+            return;
+        }
+
+        // The list hides the System Admin role; this stops a forged value.
+        if (__parameterPermission.Any(r => IsHiddenRole(r.flngRoleKey)))
+        {
+            ToastService.ShowWarning("Only a System Admin can change the System Admin permissions");
+            return;
+        }
+
+        __isSubmittingPermissions = true;
+
+        try
+        {
+            var message = await PermissionRepository.CreatePermission(__parameterPermission);
+
+            // BUG FIX: failures used to be silent – the user never saw why nothing happened.
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+            {
+                ResetProperties();
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the permissions", ex);
+        }
+        finally
+        {
+            __isSubmittingPermissions = false;
+        }
+    }
+
+    /// <summary>Remembers the clicked permission row and opens the "are you sure?" box so it can be deleted.</summary>
+    private void SelectedPermission(PermissionModel permission)
+    {
+        __permissionKey = permission.flngPermissionKey ?? 0;
+        __roleKey = permission.flngRoleKey ?? 0;
+        __isToggleModel = true;
+    }
+
+    /// <summary>Revokes the selected permission from its role.</summary>
+    private async Task DeletePermission()
+    {
+        if (__permissionKey == 0 || __roleKey == 0)
+        {
+            ToastService.ShowWarning("Select a permission first");
+            return;
+        }
+
+        if (IsHiddenRole(__roleKey))
+        {
+            ToastService.ShowWarning("Only a System Admin can change the System Admin permissions");
+            return;
+        }
+
+        try
+        {
+            var message = await PermissionRepository.DeletePermission(__permissionKey, __roleKey);
+            ToastService.Show(message.ToastType, message.Message!);
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to delete the permission", ex);
+        }
+        finally
+        {
+            __isToggleModel = false;   // close the confirmation box
+            ResetProperties();
+            await LoadData();
+        }
+    }
+
+    /// <summary>Text filter for the permissions table (null-safe).</summary>
+    private bool SearchPermission(PermissionModel permission, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(RoleName(permission.flngRoleKey ?? 0))
+            || Has(StaticDataService.GetPermissions().FirstOrDefault(x => x.Key == permission.flngPermissionKey)?.Description);
+    }
+
+    /// <summary>Resets the permission form.</summary>
+    private void ResetProperties()
+    {
+        __parameterPermission = [];
+        __permissionModel = [];
+        AddRow();
+        __isSubmittingPermissions = false;
+
+        __permissionKey = 0;
+        __roleKey = 0;
+    }
+
+    /// <summary>Shows / hides the "delete permission" confirmation dialog.</summary>
+    private void ToggleModel() => __isToggleModel = !__isToggleModel;
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

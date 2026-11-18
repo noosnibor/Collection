@@ -1,0 +1,34 @@
+@* AuthCard – the centred card shared by the Login and Change Password pages. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-card__head">
+            <span class="auth-card__mark" aria-hidden="true">
+                @((MarkupString)Icons.Get("lock", "currentColor", 22))
+            </span>
+            <div>
+                <h2 class="auth-card__title">@Title</h2>
+                <p class="auth-card__subtitle">@Subtitle</p>
+            </div>
+        </div>
+
+        <div class="auth-card__body">
+            @ChildContent
+        </div>
+
+        <div class="auth-card__foot">
+            &copy; @DateTime.UtcNow.Year WAFIF &middot; All rights reserved.
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Card heading, e.g. "Sign in".</summary>
+    [Parameter] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Line of help text under the heading.</summary>
+    [Parameter] public string Subtitle { get; set; } = string.Empty;
+
+    /// <summary>The form.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

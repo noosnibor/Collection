@@ -1,0 +1,254 @@
+/* PivotTable.razor.css — scoped. Light "console" table that matches SummaryReport:
+   white surface, hairlines, teal→indigo accent, tabular numerals, a tinted Total
+   column, an emphasized Total row, and a sticky first column for wide pivots. */
+
+.pivot {
+    /* Local names map onto the global design tokens so the component follows light / dark mode. */
+    --raise: var(--surface-2);
+    --line: var(--border);
+    --line-2: var(--border-strong);
+    --ink: var(--text);
+    --muted: var(--text-2);
+    --faint: var(--text-3);
+    --teal: var(--accent);
+    --indigo: var(--accent-2);
+    --total-tint: var(--accent-soft);
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(16, 32, 43, .04), 0 18px 40px -26px rgba(16, 32, 43, .2);
+    color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    width: 100%;
+    -webkit-font-smoothing: antialiased;
+}
+
+.pivot--empty {
+    padding: 26px;
+    color: var(--muted);
+    font-size: .9rem;
+    text-align: center;
+}
+
+.pivot__accent {
+    height: 2px;
+    background: linear-gradient(90deg, var(--teal), var(--indigo));
+}
+
+.pivot__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px 14px;
+}
+
+.pivot__heading {
+    min-width: 0;
+}
+
+.pivot__title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 650;
+    letter-spacing: -.01em;
+    line-height: 1.2;
+}
+
+.pivot__sub {
+    margin: 2px 0 0;
+    font-size: .8rem;
+    color: var(--muted);
+}
+
+.pivot__export {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 0;
+    color: var(--on-accent);
+    background: linear-gradient(90deg, var(--teal), var(--indigo));
+    font: inherit;
+    font-size: .82rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 2px;
+    cursor: pointer;
+    box-shadow: 0 6px 16px -10px rgba(79, 70, 229, .8);
+    transition: filter .16s ease, transform .08s ease;
+}
+
+    .pivot__export:hover {
+        filter: brightness(1.06);
+    }
+
+    .pivot__export:active {
+        transform: translateY(1px);
+    }
+
+    .pivot__export:focus-visible {
+        outline: 2px solid var(--teal);
+        outline-offset: 2px;
+    }
+
+/* horizontal scroll keeps wide pivots usable; first column stays pinned */
+.pivot__scroll {
+    overflow-x: auto;
+}
+
+/* ---- location tabs ---- */
+.pivot__tabs {
+    display: flex;
+    gap: 6px;
+    padding: 2px 22px 16px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.pivot__tab {
+    flex: none;
+    appearance: none;
+    border: 1px solid var(--line-2);
+    background: var(--surface);
+    color: var(--muted);
+    font: inherit;
+    font-size: .82rem;
+    font-weight: 600;
+    padding: 7px 15px;
+    border-radius: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+    .pivot__tab:hover {
+        color: var(--ink);
+        border-color: var(--border);
+    }
+
+.pivot__tab--on {
+    color: var(--on-accent);
+    border-color: transparent;
+    background: linear-gradient(90deg, var(--teal), var(--indigo));
+    box-shadow: 0 6px 16px -10px rgba(79, 70, 229, .8);
+}
+
+.pivot__tab:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+}
+
+.pivot__body-empty {
+    padding: 26px 22px;
+    text-align: center;
+    color: var(--muted);
+    font-size: .9rem;
+    border-top: 1px solid var(--line);
+}
+
+.pivot__table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: .9rem;
+}
+
+    /* ---- header ---- */
+    .pivot__table thead th {
+        position: sticky;
+        top: 0;
+        background: var(--raise);
+        color: var(--muted);
+        font-weight: 650;
+        font-size: .76rem;
+        text-align: left;
+        white-space: pre-line; /* renders the "\r\n( One )" line break */
+        line-height: 1.35;
+        vertical-align: bottom;
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--line-2);
+    }
+
+    .pivot__table th.num {
+        text-align: right;
+    }
+
+    /* ---- body ---- */
+    .pivot__table tbody td {
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+    }
+
+    .pivot__table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .pivot__table tbody tr:hover td {
+        background: rgba(16, 32, 43, .025);
+    }
+
+    .pivot__table td.label {
+        font-weight: 550;
+    }
+
+    .pivot__table td.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -.01em;
+    }
+
+    /* tinted Total column (header + cells) */
+    .pivot__table th.col-total,
+    .pivot__table td.col-total {
+        background: var(--total-tint);
+        color: var(--ink);
+        font-weight: 650;
+    }
+
+    .pivot__table thead th.col-total {
+        color: var(--teal);
+    }
+
+    /* emphasized Total row */
+    .pivot__table tbody tr.is-total td {
+        background: var(--raise);
+        border-top: 1.5px solid var(--teal);
+        border-bottom: 0;
+        font-weight: 750;
+        color: var(--ink);
+    }
+
+    .pivot__table tbody tr.is-total:hover td {
+        background: var(--raise);
+    }
+
+    .pivot__table tbody tr.is-total td.col-total {
+        background: rgba(13, 148, 136, .12);
+    }
+
+    /* ---- sticky first column ---- */
+    .pivot__table th:first-child,
+    .pivot__table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--surface);
+        box-shadow: 1px 0 0 var(--line);
+    }
+
+    .pivot__table thead th:first-child {
+        z-index: 3;
+        background: var(--raise);
+    }
+
+    .pivot__table tbody tr:hover td:first-child {
+        background: var(--surface);
+    }
+
+    .pivot__table tbody tr.is-total td:first-child {
+        background: var(--raise);
+    }

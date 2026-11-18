@@ -1,0 +1,288 @@
+@page "/VELM33UQ"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ICollectionTypeRepository CollectionTypeRepository
+@inject ILocationRepository LocationRepository
+@inject UserSessionService UserSession
+@inject ILogService<CollectionType> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "CollectionType.View")]
+
+<Spinner IsVisible="@__isSubmittingCollectionType" Message="Saving Record" />
+
+<!-- Banner -->
+<Banner Title="Collection Type Management"
+        Subtitle="Organize, track, and manage all collection types in the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <EditForm Model="__collectionTypeParameter" OnValidSubmit="OnValidCollectionTypeSubmit">
+                    <DataAnnotationsValidator />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Collection Type</label>
+                                <InputText class="input" @bind-Value="__collectionTypeParameter.fstrType" />
+                                <ValidationMessage For="@(() => __collectionTypeParameter.fstrType)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-2 label">Location</label>
+                                <InputSelect class="@($"select {(__collectionTypeParameter.fstrLocation == null ? "placeholder-shown" : "")}")" @bind-Value="__collectionTypeParameter.fstrLocation">
+                                    <option value=""></option>
+                                    @foreach (var req in __locationCurrencyModel)
+                                    {
+                                        <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => __collectionTypeParameter.fstrLocation)" />
+                            </div>
+
+
+                            <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                                <input class="formcheckinput" type="checkbox" @bind="__collectionTypeParameter.fblnActive">
+                                <label class="formchecklabel mb-0 label">Activate</label>
+                            </div>
+
+                            <!-- Buttons -->
+                            @if (__isUpdatingCollectionType)
+                            {
+                                <AuthorizeView Policy="CollectionType.Update" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-warning text-white" type="submit">Update Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetCollectionTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+                            else
+                            {
+                                <AuthorizeView Policy="CollectionType.Add" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-success" type="submit">Save Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetCollectionTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+
+
+
+                        </div>
+
+                        <div class="col-md-6">
+                            <InfoCard Model="@__collectionTypeParameter"
+                                      Title="Review Collection Type"
+                                      Subtitle="Ensure that the data entered is correct before submitting"
+                                      Img="/img/collection.png" />
+
+                        </div>
+                    </div>
+
+                </EditForm>
+
+
+                <div class="mt-5">
+                    <Table TItem="CollectionTypeModel"
+                           Items="__collectionTypeModel"
+                           Title="Collection Type"
+                           OnRowClick="SelectedCollectionType"
+                           SearchFilter="SearchCollectionType"
+                           AllowFiltering="true"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           ColumnSpan="4"
+                           IsInactive="@( u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Collection Type</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>When</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="collectionType">
+                            <td>@collectionType.fstrType</td>
+                            <td>@collectionType.fstrLocation</td>
+                            <td>
+                                <span class="badge @(collectionType.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                    @(collectionType.fblnActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                @LocalTime.ToLocal(collectionType.fdtmWhen).ToString("MMM dd, yyyy hh:mm:ss tt")
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The form model bound to the add / edit form.</summary>
+    private CollectionTypeDataTransferObject __collectionTypeParameter = new();
+
+    private IEnumerable<CollectionTypeModel> __collectionTypeModel = [];
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>Active locations only – these fill the "Location" drop-down.</summary>
+    private IEnumerable<LocationModel> __locationCurrencyModel = [];
+
+    private bool __isUpdatingCollectionType;
+    private bool __isSubmittingCollectionType;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __collectionTypeParameter = NewCollectionType();
+        await LoadAllDataAsync();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads locations and collection types from the database.</summary>
+    private async Task LoadAllDataAsync()
+    {
+        try
+        {
+            __locationModel = await LocationRepository.SelectLocation();
+            __collectionTypeModel = await CollectionTypeRepository.SelectCollectionType();
+            __locationCurrencyModel = __locationModel.Where(x => x.fblnActive).ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load collection types", ex);
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>A blank form model stamped with the signed-in user.</summary>
+    private CollectionTypeDataTransferObject NewCollectionType() => new() { fstrWho = UserSession.Username };
+
+    /// <summary>Clears the form and reloads the lists.</summary>
+    private async Task ResetCollectionTypeProperties()
+    {
+        __collectionTypeParameter = NewCollectionType();
+        __isUpdatingCollectionType = false;
+        __isSubmittingCollectionType = false;
+
+        await LoadAllDataAsync();
+    }
+
+    /// <summary>Loads a table row into the form for editing.</summary>
+    private void SelectedCollectionType(CollectionTypeModel collectionType)
+    {
+        __isUpdatingCollectionType = true;
+        __collectionTypeParameter = new()
+        {
+            flngKey = collectionType.flngKey,
+            fstrType = collectionType.fstrType,
+            fstrLocation = collectionType.fstrLocation,
+            fblnActive = collectionType.fblnActive,
+            fstrWho = collectionType.fstrWho,
+            fdtmWhen = collectionType.fdtmWhen
+        };
+    }
+
+    /// <summary>Saves the record (insert or update) and shows the result.</summary>
+    private async Task OnValidCollectionTypeSubmit()
+    {
+        if (__isSubmittingCollectionType) return;   // protects against a double click
+
+        __isSubmittingCollectionType = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__collectionTypeParameter.fstrType))
+            {
+                ToastService.ShowWarning("Please fill out all fields");
+                return;
+            }
+
+            var message = await CollectionTypeRepository.AddOrUpdateCollectionType(__collectionTypeParameter, insert: !__isUpdatingCollectionType);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetCollectionTypeProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the collection type", ex);
+        }
+        finally
+        {
+            __isSubmittingCollectionType = false;
+        }
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Text filter for the table (null-safe).</summary>
+    private bool SearchCollectionType(CollectionTypeModel collectionType, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(collectionType.fstrType) || Has(collectionType.fstrLocation);
+    }
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

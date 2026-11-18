@@ -1,0 +1,182 @@
+﻿@using System.Data
+@using System.Text.RegularExpressions
+@using Microsoft.JSInterop
+@inject ReportExportService Export
+@inject IJSRuntime JS
+
+@if (Table is null && (Locations is null || !Locations.Any()))
+{
+    <div class="pivot pivot--empty">No data to display.</div>
+}
+else
+{
+    <div class="pivot">
+        <div class="pivot__accent"></div>
+
+        <div class="pivot__head">
+            <div class="pivot__heading">
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <h3 class="pivot__title">@Title</h3>
+                }
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p class="pivot__sub">@Subtitle</p>
+                }
+            </div>
+            <button type="button" class="pivot__export" @onclick="DownloadExcel" title="Export to Excel">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M9 1.5H3.5A1.5 1.5 0 0 0 2 3v10a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 14 13V6.5L9 1.5Z"
+                          stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                    <path d="M9 1.5V6h5M5.5 8.5l3 4m0-4l-3 4" stroke="currentColor" stroke-width="1.3"
+                          stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                Excel
+            </button>
+        </div>
+
+        @if (Locations is not null && Locations.Any())
+        {
+            <div class="pivot__tabs" role="tablist" aria-label="Location">
+                @foreach (var loc in Locations)
+                {
+                    var on = string.Equals(loc, SelectedLocation, StringComparison.OrdinalIgnoreCase);
+                    <button type="button"
+                            role="tab"
+                            aria-selected="@(on ? "true" : "false")"
+                            class="pivot__tab @(on ? "pivot__tab--on" : "")"
+                            @onclick="() => SelectLocation(loc)">
+                        @loc
+                    </button>
+                }
+            </div>
+        }
+
+        @if (Table is null || Table.Columns.Count == 0)
+        {
+            <div class="pivot__body-empty">No data for @(_displayLocation).</div>
+        }
+        else
+        {
+            <div class="pivot__scroll">
+                <table class="pivot__table">
+                    <thead>
+                        <tr>
+                            @foreach (DataColumn col in Table.Columns)
+                            {
+                                <th class="@HeaderClass(col)">@Humanize(col.ColumnName)</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            var rows = Table.Rows.Cast<DataRow>().ToList();
+                        }
+                        @for (var i = 0; i < rows.Count; i++)
+                        {
+                            var row = rows[i];
+                            var isTotal = IsTotalRow(row, i, rows.Count);
+                            <tr class="@(isTotal ? "is-total" : "")">
+                                @foreach (DataColumn col in Table.Columns)
+                                {
+                                    <td class="@CellClass(col)">@FormatCell(row[col], IsNumeric(col))</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public DataTable? Table { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Locations to show as buttons at the top.</summary>
+    [Parameter] public IEnumerable<string>? Locations { get; set; }
+
+    /// <summary>The currently selected location (drives the active button).</summary>
+    [Parameter] public string? SelectedLocation { get; set; }
+
+    /// <summary>Raised when a location button is clicked — handle this to rebuild Table.</summary>
+    [Parameter] public EventCallback<string> SelectedLocationChanged { get; set; }
+
+    [Parameter] public string TotalRowLabel { get; set; } = "Total";
+    [Parameter] public string TotalColumnName { get; set; } = "Total";
+
+    private string _displayLocation => string.IsNullOrWhiteSpace(SelectedLocation) ? "this location" : SelectedLocation;
+
+    private static readonly HashSet<Type> NumericTypes = new()
+    {
+        typeof(decimal), typeof(double), typeof(float),
+        typeof(int), typeof(long), typeof(short), typeof(byte)
+    };
+
+    private static bool IsNumeric(DataColumn c) => NumericTypes.Contains(c.DataType);
+
+    private async Task SelectLocation(string location)
+    {
+        SelectedLocation = location;
+        if (SelectedLocationChanged.HasDelegate)
+            await SelectedLocationChanged.InvokeAsync(location);
+    }
+
+    private string HeaderClass(DataColumn c)
+    {
+        var cls = IsNumeric(c) ? "num" : "";
+        if (c.ColumnName == TotalColumnName) cls += " col-total";
+        return cls.Trim();
+    }
+
+    private string CellClass(DataColumn c)
+    {
+        var cls = IsNumeric(c) ? "num" : "label";
+        if (c.ColumnName == TotalColumnName) cls += " col-total";
+        return cls;
+    }
+
+    private bool IsTotalRow(DataRow row, int index, int count)
+    {
+        var first = row[0]?.ToString();
+        return string.Equals(first, TotalRowLabel, StringComparison.OrdinalIgnoreCase)
+               || (index == count - 1 && string.Equals(first, "Total", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatCell(object? value, bool numeric) => value switch
+    {
+        null or DBNull => numeric ? "0.00" : "",
+        DateTime d => d.ToString("MMM d, yyyy"),
+        decimal m => m.ToString("N2"),
+        double db => db.ToString("N2"),
+        float f => f.ToString("N2"),
+        _ => value.ToString() ?? ""
+    };
+
+    private async Task DownloadExcel()
+    {
+        if (Table is null || Table.Columns.Count == 0) return;
+
+        var bytes = Export.PivotToExcel(Table, Title, Subtitle, TotalRowLabel, TotalColumnName);
+        using var stream = new MemoryStream(bytes);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream",
+            $"{Slug(Title ?? "report")}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            streamRef);
+    }
+
+    private static string Slug(string s) =>
+        string.Concat(s.Trim().ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-')).Trim('-');
+
+    // Strip Hungarian-notation prefixes (fstr/fdec/fdtm/flng/fint/fbln/fchr) and
+    // split camelCase. Leaves date/period headers (no prefix) untouched.
+    private static string Humanize(string name)
+    {
+        var m = Regex.Match(name, "^(fstr|fdec|fdtm|flng|fint|fbln|fchr|fdbl)([A-Z].*)$");
+        if (!m.Success) return name;
+        return Regex.Replace(m.Groups[2].Value, "(?<=[a-z0-9])(?=[A-Z])", " ");
+    }
+}

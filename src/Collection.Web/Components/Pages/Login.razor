@@ -1,0 +1,295 @@
+@page "/login"
+
+@layout EmptyLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IAuthService Auth
+@inject AppVersionService VersionService
+@inject IConfiguration Config
+@inject ToastService ToastService
+@inject ILogService<Login> Log
+@inject UserSessionService UserSession
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ChangePasswordMoveableObject Obj
+
+
+<!-- Load Bar -->
+<Spinner IsVisible="@blnAuthenticating" Message="Authenticating User" />
+
+<!-- Toast -->
+<ToastContainer />
+
+<!-- Update Model -->
+<Update @bind-Show="blnShowUpdates"
+        TItem="UpdateItem"
+        Items="updates"
+        VersionLabel="@strVersion"
+        OnClosed="HandleModalClosed">
+    <ItemTemplate Context="item">
+        <div class="update-header">
+            <span class="update-title">@item.Title</span>
+            <div class="update-badges">
+                <span class="@item.BadgeClass">@item.BadgeLabel</span>
+               @*  <span class="date">@item.Date</span> *@
+            </div>
+        </div>
+        <p class="update-desc">@item.Description</p>
+    </ItemTemplate>
+</Update>
+
+@* ---------- Sign in form ---------- *@
+<PageTitle>Sign in · WAFIF Collection Management</PageTitle>
+
+<Hero Title="" Subtitle="" BrandName="WAFIF Collection Management">
+    <AuthCard Title="Sign in" Subtitle="Enter your credentials to access the system">
+        <EditForm Model="parameter" OnValidSubmit="HandleValidSubmit">
+            <DataAnnotationsValidator />
+
+            <div class="auth-field">
+                <label for="username">Username</label>
+                <div class="auth-input has-icon">
+                    <span class="auth-ico" aria-hidden="true">@((MarkupString)Icons.Get("user", "currentColor", 18))</span>
+                    <InputText id="username" class="input" autocomplete="username" placeholder="Enter your username" @bind-Value="parameter.fstrUsername" />
+                </div>
+                <ValidationMessage For="@(() => parameter.fstrUsername)" />
+            </div>
+
+            <div class="auth-field">
+                <label for="password">Password</label>
+                <div class="auth-input has-icon">
+                    <span class="auth-ico" aria-hidden="true">@((MarkupString)Icons.Get("lock", "currentColor", 18))</span>
+                    <PasswordInput id="password" class="input" @bind-Value="parameter.fstrPassword" />
+                </div>
+                <ValidationMessage For="@(() => parameter.fstrPassword)" />
+            </div>
+
+            <button class="btn btn-primary auth-submit" type="submit" disabled="@blnAuthenticating">Sign in</button>
+
+            <a class="auth-link" href="/">&larr; Choose a different church</a>
+        </EditForm>
+    </AuthCard>
+</Hero>
+
+@code {
+
+    #region Class Variable
+    private LoginDataTransferObject parameter = new();
+    private string strVersion => $"Version - {VersionService.CurrentVersion} — {DateTime.UtcNow.ToString("dd MMM yyyy")}";
+    private string CurrentVersion = "";
+    private string StorageKey = "LastVersion";
+    private string strChurch = "";
+    private bool blnShowUpdates = false;
+    private bool blnAuthenticating = false;
+
+    #endregion
+
+    #region On After Render
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await CheckVersionAsync();
+        await HandleQueryMessagesAsync();
+    }
+    #endregion
+
+    #region Check Update Version
+    /// <summary>
+    /// Compares the stored version in localStorage with the current app version.
+    /// Shows the update modal if a new version is detected and persists the new version.
+    /// </summary>
+    private async Task CheckVersionAsync()
+    {
+        // Release notes can be switched off ("Updates:ShowReleaseNotes": false) - Development does this because
+        // the debugger's browser often starts with an empty profile, which made the pop-up appear on every run.
+        if (!Config.GetValue("Updates:ShowReleaseNotes", true)) return;
+
+        try
+        {
+            var storedVersion = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            CurrentVersion = VersionService.CurrentVersion;
+
+            if (storedVersion != CurrentVersion)
+            {
+                blnShowUpdates = true;
+                // Persist immediately so a page refresh doesn't re-show the modal
+                await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, CurrentVersion);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            // JS interop can fail during prerendering — log and continue gracefully
+            await Log.LogWarning(ex.Message);
+        }
+    }
+    #endregion
+
+    #region Handle Query String Messages
+    /// <summary>
+    /// Reads ?msg= query-string parameters and fires the appropriate toast notification.
+    /// Strips the parameter from the URL after handling so refreshing doesn't re-trigger.
+    /// </summary>
+    private async Task HandleQueryMessagesAsync()
+    {
+        try
+        {
+            await Task.Yield(); // ensure NavigationManager URI is fully resolved
+
+            var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+
+            if (!query.TryGetValue("msg", out var message)) return;
+
+            switch (message.ToString())
+            {
+                case "registered":
+                    ToastService.ShowSuccess("Registration successful! Please log in.");
+                    break;
+
+                case "unauthorized":
+                    ToastService.ShowWarning(
+                        "You are not authorized to access this system. Please contact your manager.");
+                    break;
+
+                case "session_expired":
+                    ToastService.ShowInfo("Your session has expired. Please sign in again.");
+                    break;
+
+                case "password_reset":
+                    ToastService.ShowSuccess("Password reset successfully. Please sign in with your new password.");
+                    break;
+
+                case "WAFIF":
+                    strChurch = message.ToString();
+                    break;
+
+                // Add further message codes here without touching the method signature
+                default:
+                    await Log.LogDebug("Unhandled query message: {Message}" + message);
+                    break;
+            }
+
+            // Remove ?msg= from the address bar without triggering a navigation/re-render
+            var cleanUri = uri.GetLeftPart(UriPartial.Path);
+            Navigation.NavigateTo(cleanUri, forceLoad: false, replace: true);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await Log.LogWarning(ex.Message);
+        }
+    }
+    #endregion
+
+    #region Handle Valid Submit
+    private async Task HandleValidSubmit()
+    {
+        blnAuthenticating = true;
+        await GlobalService.DelayAsync();
+        try
+        {          
+
+
+             // Authenticate user
+            var (canLogin, message) = await Auth.ValidateCredentials(parameter);
+
+            if (!canLogin && message == AuthService.ChangePasswordRequired)
+            {
+                // Set Navigation Model
+                Obj.fstrUsername = parameter.fstrUsername?.Trim();
+
+                Navigation.NavigateTo("/changepassword");
+                return;
+            }
+
+            // Check if the user can be logged in
+            if (!canLogin)
+            {
+                ToastService.ShowWarning(message);
+            }
+            else
+            {
+                ((CustomAuthenticationService)AuthStateProvider)
+                      .NotifyUserAuthentication(UserSession.Principal!);
+
+                Navigation.NavigateTo("/3F8YPFZN", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Display any thrown error
+            await Log.LogError($"Login failed: {ex.Message}");
+            ToastService.ShowError("Unable to sign in right now. Please try again.");
+        }
+        finally
+        {
+            // Ensure loading state resets no matter what
+            blnAuthenticating = false;
+        }
+    }
+    #endregion
+
+    #region Update Description / Close Update Modal / Update Model
+    /// <summary>Release notes shown once after the application is upgraded.</summary>
+    private readonly List<UpdateItem> updates =
+    [
+        new UpdateItem
+        {
+            Title       = "Light and dark themes",
+            BadgeClass  = "badge-new",
+            BadgeLabel  = "New",
+            Date        = "Oct 22",
+            Description = "A redesigned, Windows 11 style interface with light, dark and \"use system setting\" themes. Change it any time from the sun/moon button in the top bar."
+        },
+        new UpdateItem
+        {
+            Title       = "Safer sign-in",
+            BadgeClass  = "badge-imp",
+            BadgeLabel  = "Improved",
+            Date        = "Oct 22",
+            Description = "Inactive and expired accounts are now blocked, temporary passwords are verified before the change-password step, and sign-in errors no longer expose technical details."
+        },
+        new UpdateItem
+        {
+            Title       = "Currency rates below 1",
+            BadgeClass  = "badge-fix",
+            BadgeLabel  = "Fixed",
+            Date        = "Oct 22",
+            Description = "Exchange rates smaller than 1 (for example 0.0064) can now be saved. Previously they were rejected by validation."
+        },
+        new UpdateItem
+        {
+            Title       = "Reports and exports",
+            BadgeClass  = "badge-fix",
+            BadgeLabel  = "Fixed",
+            Date        = "Oct 22",
+            Description = "Search filters are kept after running a report, exports are protected against spreadsheet formulas, and PDF exports now include page numbers."
+        }
+    ];
+
+    private async Task HandleModalClosed()
+    {
+        // Hide the update modal
+        blnShowUpdates = false;
+
+        // Clear all browser storage on the client machine
+        await JS.InvokeVoidAsync("portalTheme.clearStorageKeepTheme");
+
+        // Set current version to client browser
+        await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, CurrentVersion);
+    }
+
+    public class UpdateItem
+    {
+        public string Title { get; set; } = string.Empty;
+        public string BadgeClass { get; set; } = string.Empty;  // badge-new | badge-fix | badge-imp
+        public string BadgeLabel { get; set; } = string.Empty;
+        public string Date { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+    #endregion
+
+}

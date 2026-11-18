@@ -1,0 +1,291 @@
+@page "/PYMRST02"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject IPaymentTypeRepository PaymentTypeRepository
+@inject ILocationRepository LocationRepository
+@inject UserSessionService UserSession
+@inject ILogService<PaymentType> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "Payment.View")]
+
+<Spinner IsVisible="@__isSubmittingPaymentType" Message="Saving Record" />
+
+<!-- Banner -->
+<Banner Title="Payment Type Management"
+        Subtitle="Organize, track, and manage all payment types in the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <EditForm Model="__paymentTypeParameter" OnValidSubmit="OnValidPaymentTypeSubmit">
+                    <DataAnnotationsValidator />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Payment Type</label>
+                                <InputText class="input" @bind-Value="__paymentTypeParameter.fstrType" />
+                                <ValidationMessage For="@(() => __paymentTypeParameter.fstrType)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-2 label">Location</label>
+                                <InputSelect class="@($"select {(__paymentTypeParameter.fstrLocation == null ? "placeholder-shown" : "")}")" @bind-Value="__paymentTypeParameter.fstrLocation">
+                                    <option value=""></option>
+                                    @foreach (var req in __locationCurrencyModel)
+                                    {
+                                        <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => __paymentTypeParameter.fstrLocation)" />
+                            </div>
+
+
+                            <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                                <input class="formcheckinput" type="checkbox" @bind="__paymentTypeParameter.fblnActive">
+                                <label class="formchecklabel mb-0 label">Activate</label>
+                            </div>
+
+                            <!-- Buttons -->
+                            @if (__isUpdatingPaymentType)
+                            {
+                                <AuthorizeView Policy="Payment.Update" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-warning text-white" type="submit">Update Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetPaymentTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+                            else
+                            {
+                                <AuthorizeView Policy="Payment.Add" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-success" type="submit">Save Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetPaymentTypeProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+
+                            }
+
+
+
+                        </div>
+
+                        <div class="col-md-6">
+                            <InfoCard Model="@__paymentTypeParameter"
+                                      Title="Review Payment Type"
+                                      Subtitle="Ensure that the data entered is correct before submitting"
+                                      Img="/img/payment.png" />
+
+                        </div>
+                    </div>
+
+                </EditForm>
+
+
+
+
+                <div class="mt-5">
+                    <Table TItem="PaymentTypeModel"
+                           Items="__paymentTypeModel"
+                           OnRowClick="SelectedPaymentType"
+                           SearchFilter="SearchPaymentType"
+                           AllowFiltering="true"
+                           Title="Payment Type"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           ColumnSpan="4"
+                           IsInactive="@( u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Payment Type</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>When</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="paymentType">
+                            <td>@paymentType.fstrType</td>
+                            <td>@paymentType.fstrLocation</td>
+                            <td>
+                                <span class="badge @(paymentType.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                    @(paymentType.fblnActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                @LocalTime.ToLocal(paymentType.fdtmWhen).ToString("MMM dd, yyyy hh:mm:ss tt")
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The form model bound to the add / edit form.</summary>
+    private PaymentTypeDataTransferObject __paymentTypeParameter = new();
+
+    private IEnumerable<PaymentTypeModel> __paymentTypeModel = [];
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>Active locations only – these fill the "Location" drop-down.</summary>
+    private IEnumerable<LocationModel> __locationCurrencyModel = [];
+
+    private bool __isUpdatingPaymentType;
+    private bool __isSubmittingPaymentType;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __paymentTypeParameter = NewPaymentType();
+        await LoadAllDataAsync();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads locations and payment types from the database.</summary>
+    private async Task LoadAllDataAsync()
+    {
+        try
+        {
+            __locationModel = await LocationRepository.SelectLocation();
+            __paymentTypeModel = await PaymentTypeRepository.SelectPaymentType();
+            __locationCurrencyModel = __locationModel.Where(x => x.fblnActive).ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load payment types", ex);
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>A blank form model stamped with the signed-in user.</summary>
+    private PaymentTypeDataTransferObject NewPaymentType() => new() { fstrWho = UserSession.Username };
+
+    /// <summary>Clears the form and reloads the lists.</summary>
+    private async Task ResetPaymentTypeProperties()
+    {
+        __paymentTypeParameter = NewPaymentType();
+        __isUpdatingPaymentType = false;
+        __isSubmittingPaymentType = false;
+
+        await LoadAllDataAsync();
+    }
+
+    /// <summary>Loads a table row into the form for editing.</summary>
+    private void SelectedPaymentType(PaymentTypeModel paymentType)
+    {
+        __isUpdatingPaymentType = true;
+        __paymentTypeParameter = new()
+        {
+            flngKey = paymentType.flngKey,
+            fstrType = paymentType.fstrType,
+            fstrLocation = paymentType.fstrLocation,
+            fblnActive = paymentType.fblnActive,
+            fstrWho = paymentType.fstrWho,
+            fdtmWhen = paymentType.fdtmWhen
+        };
+    }
+
+    /// <summary>Saves the record (insert or update) and shows the result.</summary>
+    private async Task OnValidPaymentTypeSubmit()
+    {
+        if (__isSubmittingPaymentType) return;   // protects against a double click
+
+        __isSubmittingPaymentType = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__paymentTypeParameter.fstrType))
+            {
+                ToastService.ShowWarning("Please fill out all fields");
+                return;
+            }
+
+            var message = await PaymentTypeRepository.AddOrUpdatePaymentType(__paymentTypeParameter, insert: !__isUpdatingPaymentType);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetPaymentTypeProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the payment type", ex);
+        }
+        finally
+        {
+            __isSubmittingPaymentType = false;
+        }
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Text filter for the table (null-safe).</summary>
+    private bool SearchPaymentType(PaymentTypeModel paymentType, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(paymentType.fstrType) || Has(paymentType.fstrLocation);
+    }
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

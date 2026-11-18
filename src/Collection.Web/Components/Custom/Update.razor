@@ -1,0 +1,74 @@
+﻿@typeparam TItem
+
+@if (Show)
+{
+    <div class="modal-backdrop-custom">
+        <div class="modal-container">
+
+            <!-- HEADER -->
+            <div class="modal-header-custom">
+                <div class="modal-header-left">
+                    <div class="modal-header-icon">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                             stroke="currentColor" stroke-width="1.5"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path d="M14 4.5L8 2 2 4.5v4c0 3 2.5 5.2 6 6 3.5-.8 6-3 6-6v-4z" />
+                            <path d="M8 6v3M8 10.5v.5" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <div class="modal-header-meta">
+                        <span class="modal-header-title">Application updated</span>
+                        <span class="modal-header-subtitle">WAFIF Portal · Release notes</span>
+                    </div>
+                </div>
+                <button class="close-btn" aria-label="Close" @onclick="Close">×</button>
+            </div>
+
+            <!-- BODY -->
+            <div class="modal-body-custom">
+
+                <div class="version-pill">
+                    <span class="dot-pulse"></span>
+                    @VersionLabel
+                </div>
+
+                <p class="subtitle">What's new in this version</p>
+
+                @if (Items != null && Items.Any())
+                {
+                    @foreach (var item in Items)
+                    {
+                        <div class="update-card">
+                            @ItemTemplate!(item)
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="no-updates">No updates available.</p>
+                }
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback<bool> ShowChanged { get; set; }
+
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+
+    [Parameter] public string VersionLabel { get; set; } = "Latest release";
+
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private async Task Close()
+    {
+        Show = false;
+        await ShowChanged.InvokeAsync(false);
+        if (OnClosed.HasDelegate)
+            await OnClosed.InvokeAsync();
+    }
+}

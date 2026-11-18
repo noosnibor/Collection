@@ -1,0 +1,899 @@
+﻿@page "/report"
+@using System.ComponentModel
+@using System.Data
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ILocationRepository LocationRepository
+@inject IMemberTypeRepository MemberTypeRepository
+@inject IPaymentTypeRepository PaymentTypeRepository
+@inject ICollectionTypeRepository CollectionTypeRepository
+@inject ICurrencyRepository CurrencyRepository
+@inject UserSessionService UserSession
+@inject IReportRepository ReportRepository
+@inject ThemeService Theme
+@inject IJSRuntime JS
+@inject ReportExportService Export
+
+@attribute [Authorize(Policy = "Report.View")]
+
+<!-- Load Bar -->
+<Spinner IsVisible="@(__isSubmittingCollectionReport || __isSubmittingEndOfDayReport)" Message="Searching Records" />
+
+<!-- Banner -->
+<Banner Title="Report Management"
+        Subtitle="Search for individual records"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+        <br />
+
+
+<!-- Tabs -->
+<Tabs @bind-ActiveTab="__currentTab">
+
+    <Tab Id="detailreport" Label="Detail Report" Icon="">
+        <Content>
+            <div class="card shadow-none border-1">
+
+                <div class="filter-chip-section mb-1 ms-1 me-1">
+                    <h4 class="filter-section-label">Filters</h4>
+                    <p class="filter-hint">Select one or more filters to narrow your search.</p>
+
+                    <div class="chip-grid">
+
+                        <label class="filter-chip @(__filterBranch ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterBranch" />
+                            @*  <span class="chip-icon">🔖</span> *@
+                            <span class="chip-label">Branch</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterFirstname ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterFirstname" />
+                            @* <span class="chip-icon">🪪</span> *@
+                            <span class="chip-label">First Name</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterLastname ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterLastname" />
+                            @* <span class="chip-icon">🏢</span> *@
+                            <span class="chip-label">Last Name</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterTransactionDate ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterTransactionDate" />
+                            @* <span class="chip-icon">📨</span> *@
+                            <span class="chip-label">Transaction Date</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterMembership ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterMembership" />
+                            @* <span class="chip-icon">🕐</span> *@
+                            <span class="chip-label">Membership Status</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterCollectionType ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterCollectionType" />
+                            @*  <span class="chip-icon">✅</span> *@
+                            <span class="chip-label">Collection Type</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterPaymentType ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterPaymentType" />
+                            @* <span class="chip-icon">🗂️</span> *@
+                            <span class="chip-label">Payment Type</span>
+                        </label>
+
+                        <label class="filter-chip @(__filterCurrency ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterCurrency" />
+                            @* <span class="chip-icon">🗂️</span> *@
+                            <span class="chip-label">Currency</span>
+                        </label>
+
+
+                        <label class="filter-chip @(__filterAmount ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterAmount" />
+                            @* <span class="chip-icon">🗂️</span> *@
+                            <span class="chip-label">Amount</span>
+                        </label>
+
+                        <label class="filter-chip chip--all @(__filterAll ? "chip--active" : "")">
+                            <InputCheckbox class="d-none" @bind-Value="__filterAll" />
+                            @* <span class="chip-icon">🎛️</span> *@
+                            <span class="chip-label">All Filters</span>
+                        </label>
+
+                    </div>
+                </div>
+
+                <div class="card-body mt-4">
+                    <EditForm Model="__detailParameters" OnValidSubmit="OnValidDetailReportSubmit">
+                        <DataAnnotationsValidator />
+
+                        <div class="filter-params-grid">
+
+                            @if (__filterBranch || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Branch</label>
+                                    <InputSelect class="@($"select {(__detailParameters?.fstrLocation == null ? "placeholder-shown" : "")}")" disabled="@(!CanChooseLocation)" @bind-Value="__detailParameters!.fstrLocation">
+                                        @if (CanChooseLocation) { <option value=""></option> }
+                                        @foreach (var req in VisibleLocations)
+                                        {
+                                            <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __detailParameters!.fstrLocation)" />
+                                </div>
+                            }
+
+                            @if (__filterTransactionDate || __filterAll)
+                            {
+                                <div class="filter-param-card filter-param-card--date-range">
+                                    <label class="param-label">Transaction Date</label>
+                                    <div class="date-range-row">
+                                        <div>
+                                            <small class="text-muted">Transaction From</small>
+                                            <InputDate @bind-Value="__detailParameters.fdtmTransactionStartDate"
+                                                       class="@($"date {(__detailParameters.fdtmTransactionStartDate == null ? "placeholder" : "")}")"
+                                                       max="@LocalTime.Today.ToString("yyyy-MM-dd")" />
+                                            <ValidationMessage For="@(() => __detailParameters.fdtmTransactionStartDate)" />
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Transaction To</small>
+                                            <InputDate @bind-Value="__detailParameters.fdtmTransactionEndDate"
+                                                       class="@($"date {(__detailParameters.fdtmTransactionEndDate == null ? "placeholder" : "")}")"
+                                                       max="@LocalTime.Today.ToString("yyyy-MM-dd")" />
+                                            <ValidationMessage For="@(() => __detailParameters.fdtmTransactionEndDate)" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (__filterAmount || __filterAll)
+                            {
+                                <div class="filter-param-card filter-param-card--date-range">
+                                    <label class="param-label">Amount</label>
+                                    <div class="date-range-row">
+                                        <div>
+                                            <small class="text-muted">Local Amount From</small>
+                                            <InputNumber @bind-Value="__detailParameters.fcurAmountFrom"
+                                                         class="input" />
+                                            <ValidationMessage For="@(() => __detailParameters.fcurAmountFrom)" />
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Local Amount To</small>
+                                            <InputNumber @bind-Value="__detailParameters.fcurAmountTo"
+                                                         class="input" />
+                                            <ValidationMessage For="@(() => __detailParameters.fcurAmountTo)" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (__filterFirstname || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">First Name</label>
+                                    <InputText class="input"
+                                               @bind-Value="__detailParameters.fstrFirstname" />
+                                    <ValidationMessage For="@(() => __detailParameters.fstrFirstname)" />
+                                </div>
+                            }
+
+                            @if (__filterLastname || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Last Name</label>
+                                    <InputText class="input"
+                                               @bind-Value="__detailParameters.fstrLastname" />
+                                    <ValidationMessage For="@(() => __detailParameters.fstrLastname)" />
+                                </div>
+                            }
+
+
+                            @if (__filterMembership || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Membership</label>
+                                    <InputSelect class="@($"select {(__detailParameters?.flngMemberType == null ? "placeholder-shown" : "")}")" @bind-Value="__detailParameters.flngMemberType">
+                                        <option value=""></option>
+                                        @foreach (var req in __memberTypeModel)
+                                        {
+                                            <option value="@req.flngKey">@req.fstrType</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __detailParameters.flngMemberType)" />
+                                </div>
+                            }
+
+                            @if (__filterPaymentType || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Payment Type</label>
+                                    <InputSelect class="@($"select {(__detailParameters?.flngPaymentType == null ? "placeholder-shown" : "")}")" @bind-Value="__detailParameters.flngPaymentType">
+                                        <option value=""></option>
+                                        @foreach (var req in __paymentTypeModel)
+                                        {
+                                            <option value="@req.flngKey">@req.fstrType</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __detailParameters.flngPaymentType)" />
+                                </div>
+                            }
+
+                            @if (__filterCollectionType || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Collection Type</label>
+                                    <InputSelect class="@($"select {(__detailParameters?.flngCollectionType == null ? "placeholder-shown" : "")}")" @bind-Value="__detailParameters.flngCollectionType">
+                                        <option value=""></option>
+                                        @foreach (var req in __collectionTypeModel)
+                                        {
+                                            <option value="@req.flngKey">@req.fstrType</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __detailParameters.flngCollectionType)" />
+                                </div>
+                            }
+
+                            @if (__filterCurrency || __filterAll)
+                            {
+                                <div class="filter-param-card">
+                                    <label class="param-label">Currency</label>
+                                    <InputSelect class="@($"select {(__detailParameters?.fstrCurrencyType == null ? "placeholder-shown" : "")}")"
+                                                 @bind-Value="__detailParameters!.fstrCurrencyType">
+                                        <option value=""></option>
+                                        @foreach (var loc in __currencyModels)
+                                        {
+                                            <option value="@loc.fstrCurrency">@loc.fstrCurrencyType</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __detailParameters!.fstrCurrencyType)" />
+                                </div>
+                            }
+
+
+                        </div>
+
+                        <AuthorizeView Policy="Report.DetailSearch" Context="Collection">
+                            <Authorized>
+                                <div class="section-header d-flex justify-content-between align-items-center mt-5">
+
+                                    <div style="position: relative; z-index: 10;">
+                                        <button class="btn border-0 btn-primary align-content-center"
+                                                type="submit"
+                                                disabled="@__isSubmittingDetailReport">
+                                            <span>Search</span>
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-secondary"
+                                                @onclick="ResetProperties">
+                                            Clear
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-info"
+                                                disabled="@(__isExportingReport || !__detailResults.Any())"
+                                                @onclick="OnNewReportExportClickAsync">
+                                            <span>@(__isExportingReport ? "Exporting..." : "Export to Excel")</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </Authorized>
+                        </AuthorizeView>
+
+                       
+                    </EditForm>
+                </div>
+
+                <div class="card-footer">
+
+                    <Table TItem="ReportModel"
+                           Items="__detailResults"
+                           Title="Detail Report"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           SumSelector="@(s => s.fblnActive ? s.fcurLocalAmount : 0)"
+                           SumPrefix="@UserSession.CurrencyKey"
+                           SumColumnIndex="7"
+                           ShowSearchBox="false"
+                           ColumnSpan="9"
+                           IsInactive="@( u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Name</th>
+                            <th>Collection Number</th>
+                            <th>Member Type</th>
+                            <th>Collection Type</th>
+                            <th>Payment Type</th>
+                            <th>Currency</th>
+                            <th>Amount</th>
+                            <th>Local Amount</th>
+                            <th>Submitted By</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="collection">
+                            <td>@(collection.fstrFirstname + " " + collection.fstrLastname) </td>
+                            <td>@StaticDataService.GetCollectionNumber().FirstOrDefault(m => m.flngCollectionNumberKey == @collection.flngCollectionNumber)!.fstrCollectionNumberType </td>
+                            <td>@collection.fstrMemberTypeKey </td>
+                            <td>@collection.fstrCollectionTypeKey </td>
+                            <td>@collection.fstrPaymentTypeKey </td>
+                            <td>@collection.fstrCurrencyKey</td>
+                            <td>@collection.fcurAmount.ToString("N2")</td>
+                            <td>@collection.fcurLocalAmount.ToString("N2")</td>
+                            <td>
+                                <span class="badge bg-success-subtle text-success">
+                                    @collection.fstrWho
+                                </span>
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+
+                     
+                </div>
+
+            </div>
+        </Content>
+    </Tab>
+
+    <Tab Id="summaryreport" Label="Summary Report" Icon="chart">
+        <Content>
+            <div class="row">
+                <div class="col-12">
+
+                    <EditForm Model="__summaryParameters" OnValidSubmit="OnValidCollectionReportSubmit">
+                        <DataAnnotationsValidator />
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Location</label>
+                                    <InputSelect class="@($"select {(__summaryParameters.fstrLocation == null ? "placeholder-shown" : "")}")" disabled="@(!CanChooseLocation)" @bind-Value="__summaryParameters.fstrLocation">
+                                        @if (CanChooseLocation) { <option value="">Select All</option> }
+                                        @foreach (var req in VisibleLocations)
+                                        {
+                                            <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __summaryParameters.fstrLocation)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Transaction Start Date</label>
+                                    <InputDate @bind-Value="__summaryParameters.fdtmTransactionStart"
+                                               max="@LocalTime.Today.ToString("yyyy-MM-dd")"
+                                               class="@($"date {(__summaryParameters.fdtmTransactionStart == null ? "placeholder" : "")}")" />
+                                    <ValidationMessage For="@(() => __summaryParameters.fdtmTransactionStart)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Transaction End Date</label>
+                                    <InputDate @bind-Value="__summaryParameters.fdtmTransactionEnd"
+                                               class="@($"date {(__summaryParameters.fdtmTransactionEnd == null ? "placeholder" : "")}")" />
+                                    <ValidationMessage For="@(() => __summaryParameters.fdtmTransactionEnd)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Collection #:</label>
+                                    <InputSelect class="@($"select {(__summaryParameters.flngCollectionNumber == null ? "placeholder-shown" : "")}")" @bind-Value="__summaryParameters.flngCollectionNumber">
+                                        <option value="">Select None</option>
+                                        @foreach (var req in StaticDataService.GetCollectionNumber())
+                                        {
+                                            <option value="@req.flngCollectionNumberKey">@req.fstrCollectionNumberType</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __summaryParameters.flngCollectionNumber)" />
+                                </div>
+
+
+
+
+                                <AuthorizeView Policy="Report.SummarySearch" Context="Collection">
+                                    <Authorized>
+                                        <!-- Buttons -->
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-primary" type="submit">Search Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetCollectionProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+
+
+                            </div>
+
+                            <div class="col-md-8">
+                                <InfoCard Model="@__summaryParameters"
+                                          Title="Review Collection Type Summary Report"
+                                          Subtitle="Ensure that the data entered is correct before submitting"
+                                          Img="/img/report.png" />
+
+                            </div>
+                        </div>
+
+                    </EditForm>
+
+                    <div class="mt-10">
+                        <SummaryReport TItem="SummaryModel"
+                                       Title="Collections summary"
+                                       Data="@__summaryResults"
+                                       Columns="@__summaryColumns"
+                                       ConvertLabel="@__convertLabel"
+                                       IsConverted="@__showInUsd"
+                                       ConvertDisabled="@(__usdRate is null)"
+                                       ConvertTitle="@__convertTitle"
+                                       ConvertNote="@__convertNote"
+                                       OnConvert="ToggleUsd" />
+                    </div>
+
+                </div>
+            </div>
+        </Content>
+    </Tab>
+
+    <Tab Id="endofdayreport" Label="End Of Day Report" Icon="chart">
+        <Content>
+            <div class="row">
+                <div class="col-12">
+
+                    <EditForm Model="__endOfDayParameters" OnValidSubmit="OnValidEndOfDayReportSubmit">
+                        <DataAnnotationsValidator />
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Location</label>
+                                    <InputSelect class="@($"select {(__endOfDayParameters.fstrLocation == null ? "placeholder-shown" : "")}")" disabled="@(!CanChooseLocation)" @bind-Value="__endOfDayParameters.fstrLocation">
+                                        @if (CanChooseLocation) { <option value="">Select All</option> }
+                                        @foreach (var req in VisibleLocations)
+                                        {
+                                            <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => __endOfDayParameters.fstrLocation)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Transaction Start Date</label>
+                                    <InputDate @bind-Value="__endOfDayParameters.fdtmTransactionStart"
+                                               max="@LocalTime.Today.ToString("yyyy-MM-dd")"
+                                               class="@($"date {(__endOfDayParameters.fdtmTransactionStart == null ? "placeholder" : "")}")" />
+                                    <ValidationMessage For="@(() => __endOfDayParameters.fdtmTransactionStart)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-semibold mb-2 label">Transaction End Date</label>
+                                    <InputDate @bind-Value="__endOfDayParameters.fdtmTransactionEnd"
+                                               class="@($"date {(__endOfDayParameters.fdtmTransactionEnd == null ? "placeholder" : "")}")" />
+                                    <ValidationMessage For="@(() => __endOfDayParameters.fdtmTransactionEnd)" />
+                                </div>
+
+
+                                <AuthorizeView Policy="Report.EODSearch" Context="Collection">
+                                    <Authorized>
+                                        <!-- Buttons -->
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-primary" type="submit" disabled="@__isSubmittingEndOfDayReport">Search Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetEndOfDayProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+
+                               
+
+
+                            </div>
+
+                            <div class="col-md-8">
+                                <InfoCard Model="@__endOfDayParameters"
+                                          Title="Review End Of Day Summary Report"
+                                          Subtitle="Ensure that the data entered is correct before submitting"
+                                          Img="/img/report.png" />
+
+                            </div>
+                        </div>
+
+                    </EditForm>
+
+                    <div class="mt-10">
+                        <PivotTable Table="__endOfDayTable"
+                                    Title="End of day report"
+                                    Subtitle="@($"Location: {__selectedLocation}")"
+                                    Locations="__endOfDayLocations"
+                                    SelectedLocation="__selectedLocation"
+                                    SelectedLocationChanged="OnLocationChanged" />
+
+                    </div>
+
+                </div>
+            </div>
+        </Content>
+    </Tab>
+
+</Tabs>
+
+@code {
+    #region Private Fields – UI state
+
+    private string __currentTab = "detailreport";
+
+    private bool __isSubmittingDetailReport;
+    private bool __isSubmittingCollectionReport;
+    private bool __isSubmittingEndOfDayReport;
+    private bool __isExportingReport;
+
+    // Detail-report filter chips (which filter inputs are visible).
+    private bool __filterBranch = true;
+    private bool __filterFirstname;
+    private bool __filterLastname;
+    private bool __filterTransactionDate = true;
+    private bool __filterMembership;
+    private bool __filterCollectionType;
+    private bool __filterPaymentType;
+    private bool __filterCurrency;
+    private bool __filterAmount;
+    private bool __filterAll;
+
+    #endregion
+
+    #region Private Fields – Search parameters
+
+    private DetailReportDataTransferObject __detailParameters = new();
+    private SummaryReportDataTransferObject __summaryParameters = new();
+    private EndOfDayReportDataTransferObject __endOfDayParameters = new();
+
+    #endregion
+
+    #region Private Fields – Lookup data and results
+
+    private IEnumerable<LocationModel> __locationModel = [];
+    private IEnumerable<MemberTypeModel> __memberTypeModel = [];
+    private IEnumerable<PaymentTypeModel> __paymentTypeModel = [];
+    private IEnumerable<CollectionTypeModel> __collectionTypeModel = [];
+    private IEnumerable<CurrencyModel> __currencyModels = [];
+
+    private IEnumerable<ReportModel> __detailResults = [];
+    private List<SummaryModel> __summaryResults = [];
+
+    // End-of-day pivot: every row is kept so switching location needs no new query.
+    private List<EndOfDayModel> __endOfDayRows = [];
+    private List<string> __endOfDayLocations = [];
+    private string __selectedLocation = "";
+    private DataTable? __endOfDayTable;
+
+    #endregion
+
+    #region Summary report columns
+
+    /// <summary>Grouping and measure columns of the summary report grid.</summary>
+    private List<ReportColumnModel<SummaryModel>> __summaryColumns = [];
+
+    /// <summary>
+    /// Builds the summary columns. The amount uses the user's currency CODE (e.g. "JMD 50,000.00")
+    /// instead of the "C2" format: "C2" shows the generic ¤ sign whenever the server runs with an
+    /// invariant culture, which is the default on Azure App Service.
+    /// </summary>
+    private List<ReportColumnModel<SummaryModel>> BuildSummaryColumns()
+    {
+        // When "Convert to USD" is on, every row is divided by the latest USD rate and shown with the USD code.
+        var converting = __showInUsd && __usdRate is not null;
+        var rate = __usdRate ?? 1m;
+        var shown = converting ? UsdCode : UserSession.CurrencyKey;
+        var code = (shown ?? "").Replace("{", "{{").Replace("}", "}}");
+        var format = string.IsNullOrWhiteSpace(code) ? "{0:N2}" : code + " {0:N2}";
+        return
+        [
+            global::Collection.Library.Model.Report.Dimension<SummaryModel>("Collection Type", c => c.fstrCollectionTypeKey),
+            global::Collection.Library.Model.Report.Dimension<SummaryModel>("Payment Type", c => c.fstrPaymentTypeKey),
+            global::Collection.Library.Model.Report.Dimension<SummaryModel>("Location", c => c.fstrLocationKey),
+            global::Collection.Library.Model.Report.Measure<SummaryModel>("Amount",
+                c => converting ? Math.Round(c.fcurLocalAmount / rate, 2, MidpointRounding.AwayFromZero) : c.fcurLocalAmount,
+                format)
+        ];
+    }
+
+    #endregion
+
+    #region Convert to USD
+
+    private const string UsdCode = "USD";
+
+    /// <summary>True while the summary is shown in US dollars instead of the user's own currency.</summary>
+    private bool __showInUsd;
+
+    /// <summary>The rate row used for the conversion (latest USD rate already in force today), or null when none exists.</summary>
+    private CurrencyModel? __usdRateRow =>
+        __currencyModels
+            .Where(c => string.Equals(c.fstrCurrency, UsdCode, StringComparison.OrdinalIgnoreCase)
+                        && c.fcurAmount > 0
+                        && c.fdtmEffectiveFrom.Date <= LocalTime.Today)
+            .OrderByDescending(c => c.fdtmEffectiveFrom)
+            .FirstOrDefault();
+
+    /// <summary>Local currency units per 1 USD (the rate is "amount x rate = local amount").</summary>
+    private decimal? __usdRate => __usdRateRow?.fcurAmount;
+
+    /// <summary>The button only makes sense when the user's own currency is not already USD.</summary>
+    private bool __canConvert =>
+        !string.IsNullOrWhiteSpace(UserSession.CurrencyKey)
+        && !string.Equals(UserSession.CurrencyKey, UsdCode, StringComparison.OrdinalIgnoreCase);
+
+    private string? __convertLabel => !__canConvert ? null : __showInUsd ? $"Show in {UserSession.CurrencyKey}" : "Convert to USD";
+
+    private string? __convertTitle => __usdRate is null
+        ? "No USD exchange rate is set up yet. Add one in the Currency module."
+        : __showInUsd ? $"Back to {UserSession.CurrencyKey}" : $"Show every amount in US dollars at the latest rate ({__usdRate.Value:N2})";
+
+    private string? __convertNote => __usdRateRow is { } r
+        ? $"1 USD = {UserSession.CurrencyKey} {r.fcurAmount:N2} · rate effective {r.fdtmEffectiveFrom:dd MMM yyyy}"
+        : null;
+
+    private void ToggleUsd()
+    {
+        if (!__showInUsd && __usdRate is null)
+        {
+            ToastService.ShowWarning("No USD exchange rate found. Add one in the Currency module first.");
+            return;
+        }
+
+        __showInUsd = !__showInUsd;
+        __summaryColumns = BuildSummaryColumns();
+    }
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>Location key of the signed-in user (default search scope).</summary>
+    private string? UserLocationKey => UserSession.Principal?.FindFirstValue("LocationKey");
+
+    /// <summary>Only System Admins and Administrators may report on other locations; everyone else is limited to their own.</summary>
+    private bool CanChooseLocation =>
+        UserSession.IsSystemAdmin
+        || string.Equals(UserSession.Role, "Administrator", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The locations offered in the drop-downs: all of them for privileged roles, just the user's own otherwise.</summary>
+    private IEnumerable<LocationModel> VisibleLocations =>
+        CanChooseLocation
+            ? __locationModel
+            : __locationModel.Where(l => string.Equals(l.fstrLocation, UserLocationKey, StringComparison.OrdinalIgnoreCase));
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __summaryColumns = BuildSummaryColumns();
+        ResetDetailParameters();
+        ResetSummaryParameters();
+        __endOfDayParameters = new() { fstrLocation = UserLocationKey };
+
+        await LoadLookupData();
+    }
+
+    #endregion
+
+    #region Lookup data
+
+    /// <summary>Loads the drop-down data (active records for the user's location).</summary>
+    private async Task LoadLookupData()
+    {
+        try
+        {
+            var location = UserLocationKey;
+
+            __locationModel = await LocationRepository.SelectLocation(active: true);
+            __memberTypeModel = await MemberTypeRepository.SelectMemberType(location: location, active: true);
+            __paymentTypeModel = await PaymentTypeRepository.SelectPaymentType(location: location, active: true);
+            __collectionTypeModel = await CollectionTypeRepository.SelectCollectionType(location: location, active: true);
+
+            // Exchange rates: the full effective-dated history is kept, because the
+            // right rate depends on the dates the user searches for.
+            __currencyModels = await CurrencyRepository.SelectCurrency(location: location, active: true);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+    }
+
+    #endregion
+
+    #region Currency conversion
+
+    /// <summary>Rows of another location are converted into the viewer's currency; warn when a rate is missing.</summary>
+    private void WarnIfRateMissing(bool missing)
+    {
+        if (missing)
+            ToastService.ShowWarning($"Some rows could not be converted to {UserSession.CurrencyKey} because no exchange rate was found for their currency on the transaction date. They are shown unconverted. Add the rate in the Currency module.");
+    }
+
+    #endregion
+
+    #region Detail report
+
+    private async Task OnValidDetailReportSubmit()
+    {
+        __isSubmittingDetailReport = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (!CanChooseLocation) __detailParameters.fstrLocation = UserLocationKey;   // never trust the drop-down for restricted roles
+            __detailParameters.fstrReportLocation = UserLocationKey;
+            __detailResults = await ReportRepository.SelectDailyReport(__detailParameters);
+            WarnIfRateMissing(__detailResults.Any(r => r.fblnRateMissing));
+
+            if (!__detailResults.Any())
+                ToastService.ShowWarning("No Data Found");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            // The filters are intentionally kept so the user can refine the search.
+            // (They used to be wiped after every search.)
+            __isSubmittingDetailReport = false;
+        }
+    }
+
+    /// <summary>"Discard Record" – clears the filters and the results.</summary>
+    private void ResetProperties()
+    {
+        ResetDetailParameters();
+        __detailResults = [];
+        __isSubmittingDetailReport = false;
+    }
+
+    private void ResetDetailParameters() =>
+        __detailParameters = new() { fstrLocation = UserLocationKey };
+
+    private async Task OnNewReportExportClickAsync()
+    {
+        if (!__detailResults.Any())
+        {
+            ToastService.ShowWarning("No Data to Export");
+            return;
+        }
+
+        try
+        {
+            __isExportingReport = true;
+
+            // The workbook is built by the export service (no ClosedXML code in the page).
+            using var stream = new MemoryStream(Export.DetailToExcel(__detailResults));
+            using var streamRef = new DotNetStreamReference(stream);
+            var fileName = $"DetailReport_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStreams", fileName, streamRef);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            __isExportingReport = false;
+        }
+    }
+
+    #endregion
+
+    #region Summary report
+
+    private async Task OnValidCollectionReportSubmit()
+    {
+        __isSubmittingCollectionReport = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (!CanChooseLocation) __summaryParameters.fstrLocation = UserLocationKey;   // never trust the drop-down for restricted roles
+            __summaryParameters.fstrReportLocation = UserLocationKey;
+            __summaryResults = await ReportRepository.SelectCollectionReport(__summaryParameters);
+            WarnIfRateMissing(__summaryResults.Any(r => r.fblnRateMissing));
+
+            if (!__summaryResults.Any())
+            {
+                ToastService.ShowWarning("No Data Found");
+                return;
+            }
+
+            // fcurLocalAmount is the amount in the viewer's currency: the stored local amount, converted by the
+            // database (using the viewer's location rate on the transaction date) for rows of other locations.
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            __isSubmittingCollectionReport = false;
+        }
+    }
+
+    private void ResetCollectionProperties() => ResetSummaryParameters();
+
+    private void ResetSummaryParameters()
+    {
+        __summaryParameters = new() { fstrLocation = UserLocationKey };
+        __isSubmittingCollectionReport = false;
+    }
+
+    #endregion
+
+    #region End-of-day report
+
+    private async Task OnValidEndOfDayReportSubmit()
+    {
+        __isSubmittingEndOfDayReport = true;
+
+        try
+        {
+            if (!CanChooseLocation) __endOfDayParameters.fstrLocation = UserLocationKey;   // never trust the drop-down for restricted roles
+            __endOfDayParameters.fstrReportLocation = UserLocationKey;
+            __endOfDayRows = await ReportRepository.SelectEndOfDayReport(__endOfDayParameters);
+            WarnIfRateMissing(__endOfDayRows.Any(r => r.fblnRateMissing));
+            __endOfDayLocations = EndOfDayPivotService.GetLocations(__endOfDayRows);
+
+            if (__endOfDayRows.Count == 0)
+                ToastService.ShowWarning("No Data Found");
+
+            // Keep the previously selected location when it is still in the results.
+            if (!__endOfDayLocations.Contains(__selectedLocation, StringComparer.OrdinalIgnoreCase))
+                __selectedLocation = __endOfDayLocations.FirstOrDefault() ?? "";
+
+            RebuildEndOfDayTable();
+        }
+        catch (Exception ex)
+        {
+            // BUG FIX: this was an empty catch {}, so failures were invisible.
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            __isSubmittingEndOfDayReport = false;
+        }
+    }
+
+    private void OnLocationChanged(string location)
+    {
+        __selectedLocation = location;
+        RebuildEndOfDayTable();
+    }
+
+    private void RebuildEndOfDayTable()
+    {
+        var rows = __endOfDayRows.Where(r => string.Equals(r.fstrLocationName, __selectedLocation, StringComparison.OrdinalIgnoreCase));
+        __endOfDayTable = __endOfDayRows.Count == 0 ? null : EndOfDayPivotService.Build(rows);
+    }
+
+    private void ResetEndOfDayProperties()
+    {
+        __endOfDayParameters = new() { fstrLocation = UserLocationKey };
+        __endOfDayRows = [];
+        __endOfDayLocations = [];
+        __selectedLocation = "";
+        __endOfDayTable = null;
+    }
+
+    #endregion
+}

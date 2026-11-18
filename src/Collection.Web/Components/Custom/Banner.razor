@@ -1,0 +1,56 @@
+@* Banner – the page header shown at the top of every module page.
+   Redesigned as a clean Windows 11 style header (no remote photo, works offline and in dark mode). *@
+
+<section class="page-banner" role="banner">
+    <div class="page-banner__content">
+        @if (!string.IsNullOrWhiteSpace(Eyebrow))
+        {
+            <span class="page-banner__eyebrow">@Eyebrow</span>
+        }
+
+        <h1 class="page-banner__title">@Title</h1>
+
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p class="page-banner__subtitle">@Subtitle</p>
+        }
+    </div>
+
+    @if (ChildContent is not null)
+    {
+        <div class="page-banner__actions">
+            @ChildContent
+        </div>
+    }
+</section>
+
+@code {
+    #region Parameters
+
+    /// <summary>Main heading text.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional secondary line beneath the title.</summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Small label above the title (e.g. "Reports").</summary>
+    [Parameter] public string? Eyebrow { get; set; }
+
+    /// <summary>Optional buttons or links shown on the right of the header.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    #endregion
+
+    #region Legacy Parameters (accepted, no longer used)
+
+    // The pages still pass these from the old photo-banner design. They are kept so existing
+    // markup keeps compiling; the header is now a theme-aware surface instead of an image.
+
+    /// <summary>Ignored – banners no longer use background photos.</summary>
+    [Parameter] public string? BackgroundImage { get; set; }
+
+    /// <summary>Ignored – the header follows the active theme.</summary>
+    [Parameter] public string? Alignment { get; set; }
+
+    #endregion
+}

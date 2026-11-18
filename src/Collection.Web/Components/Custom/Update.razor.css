@@ -1,0 +1,129 @@
+/* Update – "what's new" release-notes dialog (theme aware) */
+
+.modal-backdrop-custom {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-container {
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
+}
+
+/* Header */
+.modal-header-custom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header-left { display: flex; align-items: center; gap: 12px; }
+
+.modal-header-icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 2px;
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.modal-header-meta { display: flex; flex-direction: column; line-height: 1.25; }
+.modal-header-title { font-size: 16px; font-weight: 600; }
+.modal-header-subtitle { font-size: 12.5px; color: var(--text-3); }
+
+.close-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--text-3);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+    .close-btn:hover { color: var(--text); background: var(--surface-3); }
+
+/* Body */
+.modal-body-custom {
+    padding: 18px 20px 22px;
+    overflow-y: auto;
+}
+
+.version-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 2px;
+}
+
+.dot-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+}
+
+.subtitle { margin: 14px 0 8px; font-size: 13px; color: var(--text-3); }
+.no-updates { color: var(--text-3); }
+
+.update-card {
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+/* The markup below is rendered by the page that supplies the ItemTemplate, hence ::deep */
+.update-card ::deep .update-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.update-card ::deep .update-title { font-weight: 600; }
+.update-card ::deep .update-desc { margin: 4px 0 0; font-size: 13px; color: var(--text-3); }
+.update-card ::deep .update-badges { display: flex; gap: 6px; }
+
+.update-card ::deep .badge-new,
+.update-card ::deep .badge-imp,
+.update-card ::deep .badge-fix {
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 2px;
+}
+
+.update-card ::deep .badge-new { color: var(--success); background: var(--success-soft); }
+.update-card ::deep .badge-imp { color: var(--accent); background: var(--accent-soft); }
+.update-card ::deep .badge-fix { color: var(--warning); background: var(--warning-soft); }

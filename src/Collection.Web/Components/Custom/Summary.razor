@@ -1,0 +1,758 @@
+@* CategorySummary.razor - Generic summary card for any category breakdown *@
+@using Microsoft.JSInterop
+@inject ReportExportService Export
+@inject IJSRuntime JS
+
+<div class="cs-container">
+
+    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Eyebrow) || !string.IsNullOrEmpty(EffectiveBadgeLabel) || ShowUsdToggle)
+    {
+        <div class="cs-header">
+            <div>
+                @if (!string.IsNullOrEmpty(Eyebrow))
+                {
+                    <p class="cs-eyebrow">@Eyebrow</p>
+                }
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <h2 class="cs-title">@Title</h2>
+                }
+            </div>
+            <div class="cs-header-actions">
+                @if (!string.IsNullOrEmpty(EffectiveBadgeLabel))
+                {
+                    <span class="cs-badge">
+                        @if (!string.IsNullOrEmpty(BadgeIcon))
+                        {
+                            @((MarkupString)GetIconSvg(BadgeIcon, "currentColor", 14))
+                        }
+                        @EffectiveBadgeLabel
+                    </span>
+                }
+                @if (ShowUsdToggle)
+                {
+                    @*  <label class="cs-usd-toggle">
+                        <input type="checkbox" checked="@_showUsd" @onchange="OnUsdToggleChanged" />
+                        <span>@UsdToggleLabel</span>
+                    </label> *@
+                    <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                        <input class="formcheckinput" type="checkbox" checked="@_showUsd" @onchange="OnUsdToggleChanged">
+                        <label class="formchecklabel mb-0 label">@UsdToggleLabel</label>
+                    </div>
+                }
+                @if (ShowExportButtons)
+                {
+                    <div class="cs-export">
+                        <button type="button" class="cs-export-btn" disabled="@_exporting" @onclick="@(() => RunExportAsync(ExportExcelAsync))">Excel</button>
+                        <button type="button" class="cs-export-btn" disabled="@_exporting" @onclick="@(() => RunExportAsync(ExportPdfAsync))">PDF</button>
+                        <button type="button" class="cs-export-btn" disabled="@_exporting" @onclick="@(() => RunExportAsync(ExportCsvAsync))">CSV</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (ShowCards)
+    {
+        <div class="cs-cards-grid">
+            @foreach (var item in Items)
+            {
+                var percentage = TotalValue > 0 ? (decimal)((double)item.Value / (double)TotalValue * 100) : 0;
+                var palette = GetPalette(item.ColorTheme);
+                var isClickable = OnItemClick.HasDelegate;
+
+                <div class="cs-card @(isClickable ? "cs-card-clickable" : "")"
+                     @onclick="@(() => HandleItemClick(item))"
+                     role="@(isClickable ? "button" : null)"
+                     tabindex="@(isClickable ? "0" : null)">
+                    <div class="cs-card-head">
+                        <div class="cs-icon-tile" style="background: @palette.TileBg;">
+                            @((MarkupString)GetIconSvg(item.Icon, palette.IconColor, 18))
+                        </div>
+                        <span class="cs-card-label">@item.Label</span>
+                    </div>
+                    <p class="cs-card-value">
+                        @FormatValue(item.Value, showMinor: false)<span class="cs-card-value-minor">@FormatMinor(item.Value)</span>
+                    </p>
+                    @if (ShowProgressBars)
+                    {
+                        <div class="cs-progress-track">
+                            <div class="cs-progress-fill"
+                                 style="width: @($"{percentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%"); background: @palette.BarColor;">
+                            </div>
+                        </div>
+                        <p class="cs-card-percent">@percentage.ToString("0.0")% of total</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (ShowDateBreakdown && DateBuckets is { Count: > 0 })
+    {
+        var rangeTotal = DateBuckets.Sum(b => BucketTotal(b));
+
+        <div class="cs-summary-card cs-range-card">
+            @if (!string.IsNullOrEmpty(DateBreakdownLabel) || !string.IsNullOrEmpty(DateRangeLabel))
+            {
+                <div class="cs-summary-head">
+                    @if (!string.IsNullOrEmpty(DateBreakdownLabel))
+                    {
+                        <span class="cs-summary-head-label">@DateBreakdownLabel</span>
+                    }
+                    @if (!string.IsNullOrEmpty(DateRangeLabel))
+                    {
+                        <span class="cs-summary-head-meta">@DateRangeLabel</span>
+                    }
+                </div>
+            }
+
+            <table class="cs-range-table">
+                <thead>
+                    <tr>
+                        <th>@DateColumnHeader</th>
+                        <th class="cs-range-num">@DateValueHeader</th>
+                        <th class="cs-range-num">@DateShareHeader</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < DateBuckets.Count; i++)
+                    {
+                        var index = i;
+                        var bucket = DateBuckets[index];
+                        var bucketTotal = BucketTotal(bucket);
+                        var pct = rangeTotal > 0 ? (decimal)((double)bucketTotal / (double)rangeTotal * 100) : 0;
+                        var hasLines = bucket.Lines is { Count: > 0 };
+                        var expanded = hasLines && IsExpanded(index);
+                        <tr class="cs-range-group @(hasLines ? "cs-range-group-clickable" : "")"
+                            @onclick="@(() => ToggleBucket(index))"
+                            @onkeydown="@(e => OnGroupKeyDown(e, index))"
+                            role="@(hasLines ? "button" : null)"
+                            aria-expanded="@(hasLines? expanded.ToString().ToLowerInvariant() : null)"
+                            tabindex="@(hasLines ? "0" : null)">
+                            <td>
+                                <span class="cs-range-period-cell">
+                                    @if (hasLines)
+                                    {
+                                        <span class="cs-range-chevron @(expanded ? "cs-range-chevron-open" : "")">@((MarkupString)GetIconSvg("chevron", "currentColor", 14))</span>
+                                    }
+                                    <span class="cs-range-period">@bucket.Label</span>
+                                    @if (!string.IsNullOrEmpty(bucket.SubLabel))
+                                    {
+                                        <span class="cs-range-sub">@bucket.SubLabel</span>
+                                    }
+                                </span>
+                            </td>
+                            <td class="cs-range-num">
+                                @FormatValue(bucketTotal, showMinor: false)<span class="cs-range-minor">@FormatMinor(bucketTotal)</span>
+                            </td>
+                            <td class="cs-range-num">@pct.ToString("0.0")%</td>
+                        </tr>
+                        @if (expanded)
+                        {
+                            @foreach (var line in bucket.Lines!)
+                            {
+                                var linePalette = GetPalette(line.ColorTheme);
+                                <tr class="cs-range-line">
+                                    <td>
+                                        <span class="cs-range-line-cell">
+                                            <span class="cs-range-dot" style="background: @linePalette.BarColor;"></span>
+                                            @line.Label
+                                        </span>
+                                    </td>
+                                    <td class="cs-range-num">
+                                        @FormatValue(line.Value, showMinor: false)<span class="cs-range-minor">@FormatMinor(line.Value)</span>
+                                    </td>
+                                    <td class="cs-range-num"></td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+                @if (ShowDateTotal)
+                {
+                    <tfoot>
+                        <tr>
+                            <td>@DateTotalLabel</td>
+                            <td class="cs-range-num">@FormatValue(rangeTotal, showMinor: false)<span class="cs-range-minor">@FormatMinor(rangeTotal)</span></td>
+                            <td class="cs-range-num">100%</td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+    }
+
+    @if (ShowLocationBreakdown && LocationBuckets is { Count: > 0 })
+    {
+        var locationBuckets = LocationBuckets;
+        var locTotal = locationBuckets.Sum(b => BucketTotal(b));
+
+        <div class="cs-summary-card cs-range-card">
+            @if (!string.IsNullOrEmpty(LocationBreakdownLabel))
+            {
+                <div class="cs-summary-head">
+                    <span class="cs-summary-head-label">@LocationBreakdownLabel</span>
+                    <span class="cs-summary-head-meta">@locationBuckets.Count @(locationBuckets.Count == 1 ? "location" : "locations")</span>
+                </div>
+            }
+
+            <table class="cs-range-table">
+                <thead>
+                    <tr>
+                        <th>@LocationColumnHeader</th>
+                        <th class="cs-range-num">@LocationValueHeader</th>
+                        <th class="cs-range-num">@LocationShareHeader</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < locationBuckets.Count; i++)
+                    {
+                        var index = i;
+                        var bucket = locationBuckets[index];
+                        var bucketTotal = BucketTotal(bucket);
+                        var pct = locTotal > 0 ? (decimal)((double)bucketTotal / (double)locTotal * 100) : 0;
+                        var hasLines = bucket.Lines is { Count: > 0 };
+                        var expanded = hasLines && IsLocationExpanded(index);
+                        <tr class="cs-range-group @(hasLines ? "cs-range-group-clickable" : "")"
+                            @onclick="@(() => ToggleLocation(index))"
+                            @onkeydown="@(e => OnLocationKeyDown(e, index))"
+                            role="@(hasLines ? "button" : null)"
+                            aria-expanded="@(hasLines? expanded.ToString().ToLowerInvariant() : null)"
+                            tabindex="@(hasLines ? "0" : null)">
+                            <td>
+                                <span class="cs-range-period-cell">
+                                    @if (hasLines)
+                                    {
+                                        <span class="cs-range-chevron @(expanded ? "cs-range-chevron-open" : "")">@((MarkupString)GetIconSvg("chevron", "currentColor", 14))</span>
+                                    }
+                                    <span class="cs-range-period">@bucket.Label</span>
+                                </span>
+                            </td>
+                            <td class="cs-range-num">
+                                @FormatValue(bucketTotal, showMinor: false)<span class="cs-range-minor">@FormatMinor(bucketTotal)</span>
+                            </td>
+                            <td class="cs-range-num">@pct.ToString("0.0")%</td>
+                        </tr>
+                        @if (expanded)
+                        {
+                            @foreach (var line in bucket.Lines!)
+                            {
+                                var linePalette = GetPalette(line.ColorTheme);
+                                <tr class="cs-range-line">
+                                    <td>
+                                        <span class="cs-range-line-cell">
+                                            <span class="cs-range-dot" style="background: @linePalette.BarColor;"></span>
+                                            @line.Label
+                                        </span>
+                                    </td>
+                                    <td class="cs-range-num">
+                                        @FormatValue(line.Value, showMinor: false)<span class="cs-range-minor">@FormatMinor(line.Value)</span>
+                                    </td>
+                                    <td class="cs-range-num"></td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+                @if (ShowLocationTotal)
+                {
+                    <tfoot>
+                        <tr>
+                            <td>@LocationTotalLabel</td>
+                            <td class="cs-range-num">@FormatValue(locTotal, showMinor: false)<span class="cs-range-minor">@FormatMinor(locTotal)</span></td>
+                            <td class="cs-range-num">100%</td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+    }
+
+    @if (ShowComposition)
+    {
+        <div class="cs-summary-card">
+            @if (!string.IsNullOrEmpty(CompositionLabel) || ShowItemCount)
+            {
+                <div class="cs-summary-head">
+                    @if (!string.IsNullOrEmpty(CompositionLabel))
+                    {
+                        <span class="cs-summary-head-label">@CompositionLabel</span>
+                    }
+                    @if (ShowItemCount)
+                    {
+                        <span class="cs-summary-head-meta">@Items.Count @(Items.Count == 1 ? ItemNounSingular : ItemNounPlural)</span>
+                    }
+                </div>
+            }
+
+            <div class="cs-summary-body">
+                <div class="cs-stacked-bar">
+                    @foreach (var item in Items)
+                    {
+                        var percentage = TotalValue > 0 ? (decimal)((double)item.Value / (double)TotalValue * 100) : 0;
+                        var palette = GetPalette(item.ColorTheme);
+                        <div style="width: @($"{percentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%"); background: @palette.BarColor;"></div>
+                    }
+                </div>
+
+                <div class="cs-legend">
+                    @foreach (var item in Items)
+                    {
+                        var palette = GetPalette(item.ColorTheme);
+                        <div class="cs-legend-item">
+                            <span class="cs-legend-swatch" style="background: @palette.BarColor;"></span>
+                            <span class="cs-legend-text">@item.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (ShowTotal)
+            {
+                <div class="cs-total">
+                    <div>
+                        <p class="cs-total-label">@TotalLabel</p>
+                        @if (!string.IsNullOrEmpty(TotalSubtext))
+                        {
+                            <p class="cs-total-sub">@TotalSubtext</p>
+                        }
+                    </div>
+                    <p class="cs-total-value">
+                        @FormatValue(TotalValue, showMinor: false)<span class="cs-total-value-minor">@FormatMinor(TotalValue)</span>
+                    </p>
+                </div>
+            }
+        </div>
+    }
+
+</div>
+
+@code {
+    // ---- Header text ----
+    [Parameter] public string? Title { get; set; } = "Summary";
+    [Parameter] public string? Eyebrow { get; set; }
+    [Parameter] public string? BadgeLabel { get; set; }
+    [Parameter] public string? BadgeIcon { get; set; }
+    /// <summary>Format used when the badge date is worked out from the model (e.g. "d MMM yyyy").</summary>
+    [Parameter] public string DateFormat { get; set; } = "d MMM yyyy";
+
+    // ---- Composition section ----
+    [Parameter] public string? CompositionLabel { get; set; } = "Composition";
+    [Parameter] public string ItemNounSingular { get; set; } = "item";
+    [Parameter] public string ItemNounPlural { get; set; } = "items";
+
+    // ---- Date-range breakdown table ----
+    /// <summary>Optional time-bucketed data (by day, week, month, etc.). When supplied, a table is rendered.</summary>
+    [Parameter] public List<DateBucket>? DateBuckets { get; set; }
+    /// <summary>Heading shown above the table.</summary>
+    [Parameter] public string? DateBreakdownLabel { get; set; } = "By date range";
+    /// <summary>Optional sub-heading describing the span, e.g. "Jan 1 - Jan 31, 2026".</summary>
+    [Parameter] public string? DateRangeLabel { get; set; }
+    [Parameter] public string DateColumnHeader { get; set; } = "Period";
+    [Parameter] public string DateValueHeader { get; set; } = "Amount";
+    [Parameter] public string DateShareHeader { get; set; } = "Percentage";
+    [Parameter] public string DateTotalLabel { get; set; } = "Range total";
+    /// <summary>Start with every period expanded. Default is collapsed (dates only).</summary>
+    [Parameter] public bool ExpandDateRows { get; set; } = false;
+
+    // ---- Location breakdown table ----
+    /// <summary>Optional location-bucketed data (one bucket per site/branch). When supplied, a table is rendered. Works exactly like DateBuckets.</summary>
+    [Parameter] public List<DateBucket>? LocationBuckets { get; set; }
+    /// <summary>Set false to hide the location table even when buckets are supplied.</summary>
+    [Parameter] public bool ShowLocationBreakdown { get; set; } = true;
+    /// <summary>Heading shown above the location table.</summary>
+    [Parameter] public string? LocationBreakdownLabel { get; set; } = "By location";
+    [Parameter] public string LocationColumnHeader { get; set; } = "Location";
+    [Parameter] public string LocationValueHeader { get; set; } = "Amount";
+    [Parameter] public string LocationShareHeader { get; set; } = "Percentage";
+    [Parameter] public string LocationTotalLabel { get; set; } = "Total";
+    [Parameter] public bool ShowLocationTotal { get; set; } = true;
+    /// <summary>Start with every location expanded to show its breakdown lines. Default is collapsed.</summary>
+    [Parameter] public bool ExpandLocationRows { get; set; } = false;
+
+    // ---- Total section ----
+    [Parameter] public string TotalLabel { get; set; } = "TOTAL";
+    [Parameter] public string? TotalSubtext { get; set; }
+
+    // ---- Value formatting ----
+    /// <summary>Symbol/prefix shown before the number (e.g. "$", "€", ""). Leave empty for non-currency values.</summary>
+    [Parameter] public string ValuePrefix { get; set; } = "";
+    /// <summary>Optional suffix shown after the number (e.g. " hrs", " kg", "%").</summary>
+    [Parameter] public string ValueSuffix { get; set; } = "";
+    /// <summary>Number of decimal places in the "minor" portion (default 2 for cents). Set to 0 to hide the minor span.</summary>
+    [Parameter] public int MinorDigits { get; set; } = 2;
+    [Parameter] public string CultureName { get; set; } = "en-US";
+
+    /// <summary>Optional custom value formatter. Receives the raw decimal and returns (majorPart, minorPart).</summary>
+    [Parameter] public Func<decimal, (string Major, string Minor)>? ValueFormatter { get; set; }
+
+    // ---- USD conversion ----
+    /// <summary>Shows a checkbox that converts displayed amounts to US dollars.</summary>
+    [Parameter] public bool ShowUsdToggle { get; set; } = true;
+    [Parameter] public string UsdToggleLabel { get; set; } = "Show in US dollars";
+    /// <summary>Multiplier applied to each amount when the USD checkbox is ticked (local amount × rate = USD).</summary>
+    [Parameter] public decimal UsdExchangeRate { get; set; } = 1m;
+    /// <summary>Currency symbol shown when amounts are converted to USD.</summary>
+    [Parameter] public string UsdPrefix { get; set; } = "$";
+
+    // ---- Export ----
+    [Parameter] public bool ShowExportButtons { get; set; } = true;
+    /// <summary>Base file name used for downloads (no extension).</summary>
+    [Parameter] public string ExportFileName { get; set; } = "summary";
+    /// <summary>Raised if an export fails (e.g. a missing library).</summary>
+    [Parameter] public EventCallback<Exception> OnExportError { get; set; }
+
+    // ---- Display toggles ----
+    [Parameter] public bool ShowCards { get; set; } = true;
+    [Parameter] public bool ShowProgressBars { get; set; } = true;
+    [Parameter] public bool ShowDateBreakdown { get; set; } = true;
+    [Parameter] public bool ShowDateTotal { get; set; } = true;
+    [Parameter] public bool ShowComposition { get; set; } = true;
+    [Parameter] public bool ShowItemCount { get; set; } = true;
+    [Parameter] public bool ShowTotal { get; set; } = true;
+
+    // ---- Data ----
+    [Parameter, EditorRequired] public List<SummaryItem> Items { get; set; } = new();
+
+    /// <summary>Override the computed total (e.g. when items represent a subset). Defaults to Items.Sum(Value).</summary>
+    [Parameter] public decimal? CustomTotal { get; set; }
+
+    [Parameter] public EventCallback<SummaryItem> OnItemClick { get; set; }
+
+    private decimal TotalValue => CustomTotal ?? (Items?.Sum(i => i.Value) ?? 0);
+
+    // ---- USD conversion ----
+    private bool _showUsd;
+
+    private void OnUsdToggleChanged(ChangeEventArgs e) => _showUsd = e.Value is true;
+
+    /// <summary>Applies the USD exchange rate to a value when the toggle is on.</summary>
+    private decimal ToDisplayValue(decimal value) => _showUsd ? value * UsdExchangeRate : value;
+
+    /// <summary>The currency symbol currently in effect.</summary>
+    private string EffectivePrefix => _showUsd ? UsdPrefix : ValuePrefix;
+
+    // ---- Export (CSV / Excel / PDF) ----
+    private bool _exporting;
+
+    private async Task RunExportAsync(Func<Task> export)
+    {
+        if (_exporting) return;
+        _exporting = true;
+        try
+        {
+            await export();
+        }
+        catch (Exception ex)
+        {
+            if (OnExportError.HasDelegate)
+                await OnExportError.InvokeAsync(ex);
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var bytes = new System.Text.UTF8Encoding(true).GetBytes(BuildCsv());
+        await DownloadAsync($"{ExportFileName}.csv", "text/csv;charset=utf-8", bytes);
+    }
+
+    /// <summary>Builds the neutral, already-converted data the export service needs.</summary>
+    private SummaryExportData BuildExportData() => new()
+    {
+        Title = Title ?? "Summary",
+        Eyebrow = Eyebrow,
+        Badge = EffectiveBadgeLabel,
+        TotalLabel = TotalLabel,
+        CurrencyPrefix = EffectivePrefix,
+        Items = Items.Select(i => new ExportLine(i.Label, ToDisplayValue(i.Value))).ToList(),
+        Total = ToDisplayValue(TotalValue),
+        DateHeading = DateBreakdownLabel ?? "By date range",
+        DateBuckets = (DateBuckets ?? new()).Select(ToExportBucket).ToList(),
+        LocationHeading = LocationBreakdownLabel ?? "By location",
+        LocationBuckets = (LocationBuckets ?? new()).Select(ToExportBucket).ToList(),
+        Culture = GetCulture()
+    };
+
+    private ExportBucket ToExportBucket(DateBucket bucket) => new(
+        bucket.Label,
+        ToDisplayValue(BucketTotal(bucket)),
+        (bucket.Lines ?? new()).Select(l => new ExportLine(l.Label, ToDisplayValue(l.Value))).ToList());
+
+    private async Task ExportExcelAsync() =>
+        await DownloadAsync($"{ExportFileName}.xlsx", ReportExportService.XlsxContentType, Export.SummaryToExcel(BuildExportData()));
+
+    private async Task ExportPdfAsync() =>
+        await DownloadAsync($"{ExportFileName}.pdf", "application/pdf", Export.SummaryToPdf(BuildExportData()));
+
+    private string BuildCsv()
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var currency = EffectivePrefix;
+        var total = TotalValue;
+        var sb = new System.Text.StringBuilder();
+
+        sb.AppendLine($"Collection Type,Amount{(string.IsNullOrEmpty(currency) ? "" : $" ({currency})")},Share %");
+        foreach (var item in Items)
+        {
+            var pct = total > 0 ? (double)(item.Value / total) * 100 : 0;
+            sb.AppendLine($"{CsvEscape(item.Label)},{ToDisplayValue(item.Value).ToString("0.00", culture)},{pct.ToString("0.0", culture)}");
+        }
+        sb.AppendLine($"{CsvEscape(TotalLabel)},{ToDisplayValue(total).ToString("0.00", culture)},100");
+
+        if (DateBuckets is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("Period,Collection Type,Amount");
+            foreach (var bucket in DateBuckets)
+            {
+                if (bucket.Lines is { Count: > 0 })
+                {
+                    foreach (var line in bucket.Lines)
+                        sb.AppendLine($"{CsvEscape(bucket.Label)},{CsvEscape(line.Label)},{ToDisplayValue(line.Value).ToString("0.00", culture)}");
+                }
+                else
+                {
+                    sb.AppendLine($"{CsvEscape(bucket.Label)},,{ToDisplayValue(BucketTotal(bucket)).ToString("0.00", culture)}");
+                }
+            }
+        }
+
+        if (LocationBuckets is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("Location,Collection Type,Amount");
+            foreach (var bucket in LocationBuckets)
+            {
+                if (bucket.Lines is { Count: > 0 })
+                {
+                    foreach (var line in bucket.Lines)
+                        sb.AppendLine($"{CsvEscape(bucket.Label)},{CsvEscape(line.Label)},{ToDisplayValue(line.Value).ToString("0.00", culture)}");
+                }
+                else
+                {
+                    sb.AppendLine($"{CsvEscape(bucket.Label)},,{ToDisplayValue(BucketTotal(bucket)).ToString("0.00", culture)}");
+                }
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string CsvEscape(string? value)
+    {
+        value ??= string.Empty;
+        var needsQuoting = value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0;
+        return needsQuoting
+            ? "\"" + value.Replace("\"", "\"\"") + "\""
+            : value;
+    }
+
+    private async Task DownloadAsync(string fileName, string contentType, byte[] bytes)
+    {
+        var base64 = System.Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("summaryExport.saveAsFile", fileName, contentType, base64);
+    }
+
+    /// <summary>The badge text actually shown: the explicit BadgeLabel if set, otherwise the date worked out from the model.</summary>
+    private string? EffectiveBadgeLabel => !string.IsNullOrEmpty(BadgeLabel) ? BadgeLabel : AutoDate;
+
+    /// <summary>Derives a single date (or a date range) from the dates carried on the items.</summary>
+    private string? AutoDate
+    {
+        get
+        {
+            if (Items == null) return null;
+
+            var dates = Items.Where(i => i.Date.HasValue)
+                             .Select(i => i.Date!.Value.Date)
+                             .Distinct()
+                             .OrderBy(d => d)
+                             .ToList();
+
+            if (dates.Count == 0) return null;
+
+            var culture = GetCulture();
+            return dates.Count == 1
+                ? dates[0].ToString(DateFormat, culture)
+                : $"{dates[0].ToString(DateFormat, culture)} – {dates[^1].ToString(DateFormat, culture)}";
+        }
+    }
+
+    private Task HandleItemClick(SummaryItem item) =>
+        OnItemClick.HasDelegate ? OnItemClick.InvokeAsync(item) : Task.CompletedTask;
+
+    /// <summary>Period total: explicit Value when set, otherwise the sum of its breakdown lines.</summary>
+    private static decimal BucketTotal(DateBucket bucket) =>
+        bucket.Value != 0 || bucket.Lines is not { Count: > 0 }
+            ? bucket.Value
+            : bucket.Lines.Sum(l => l.Value);
+
+    // ---- Location collapse state ----
+    private readonly HashSet<int> _expandedLocations = new();
+
+    private bool IsLocationExpanded(int index) => _expandedLocations.Contains(index);
+
+    private void ToggleLocation(int index)
+    {
+        if (!_expandedLocations.Add(index))
+            _expandedLocations.Remove(index);
+    }
+
+    private void OnLocationKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e, int index)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar")
+            ToggleLocation(index);
+    }
+
+    // ---- Collapsible date rows ----
+    private readonly HashSet<int> _expandedBuckets = new();
+
+    private bool IsExpanded(int index) => _expandedBuckets.Contains(index);
+
+    private void ToggleBucket(int index)
+    {
+        if (!_expandedBuckets.Add(index))
+            _expandedBuckets.Remove(index);
+    }
+
+    private void OnGroupKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e, int index)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar")
+            ToggleBucket(index);
+    }
+
+    protected override void OnInitialized()
+    {
+        if (ExpandDateRows && DateBuckets is { Count: > 0 })
+        {
+            for (var i = 0; i < DateBuckets.Count; i++)
+                _expandedBuckets.Add(i);
+        }
+
+        if (ExpandLocationRows && LocationBuckets is { Count: > 0 })
+        {
+            var count = LocationBuckets.Count;
+            for (var i = 0; i < count; i++)
+                _expandedLocations.Add(i);
+        }
+    }
+
+    private string FormatValue(decimal value, bool showMinor)
+    {
+        value = ToDisplayValue(value);
+
+        if (ValueFormatter != null)
+            return ValueFormatter(value).Major;
+
+        var culture = GetCulture();
+        var whole = Math.Truncate(Math.Abs(value));
+        var sign = value < 0 ? "-" : "";
+        return $"{sign}{EffectivePrefix}{whole.ToString("N0", culture)}";
+    }
+
+    private string FormatMinor(decimal value)
+    {
+        value = ToDisplayValue(value);
+
+        if (ValueFormatter != null)
+            return ValueFormatter(value).Minor + ValueSuffix;
+
+        if (MinorDigits <= 0)
+            return ValueSuffix;
+
+        var fraction = Math.Abs(value - Math.Truncate(value));
+        var multiplier = (decimal)Math.Pow(10, MinorDigits);
+        var minorPart = (long)Math.Round(fraction * multiplier);
+        var padded = minorPart.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                              .PadLeft(MinorDigits, '0');
+        return $".{padded}{ValueSuffix}";
+    }
+
+    private System.Globalization.CultureInfo GetCulture()
+    {
+        try
+        {
+            return System.Globalization.CultureInfo.GetCultureInfo(CultureName);
+        }
+        catch
+        {
+            return System.Globalization.CultureInfo.InvariantCulture;
+        }
+    }
+
+    private (string TileBg, string IconColor, string BarColor) GetPalette(string? theme) => theme?.ToLowerInvariant() switch
+    {
+        "blue" => ("#E6F1FB", "#185FA5", "#378ADD"),
+        "teal" => ("#E1F5EE", "#0F6E56", "#1D9E75"),
+        "purple" => ("#EEEDFE", "#534AB7", "#7F77DD"),
+        "coral" => ("#FAECE7", "#993C1D", "#D85A30"),
+        "pink" => ("#FBEAF0", "#993556", "#D4537E"),
+        "amber" => ("#FAEEDA", "#854F0B", "#EF9F27"),
+        "green" => ("#EAF3DE", "#3B6D11", "#97C459"),
+        "red" => ("#FCEBEB", "#A32D2D", "#E24B4A"),
+        "gray" => ("#F1EFE8", "#444441", "#888780"),
+        _ => ("#F1EFE8", "#444441", "#888780"),
+    };
+
+    private string GetIconSvg(string? icon, string color, int size)
+    {
+        var common = $"viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"{size}\" height=\"{size}\"";
+        return icon?.ToLowerInvariant() switch
+        {
+            "credit-card" => $"<svg {common}><rect x=\"2\" y=\"5\" width=\"20\" height=\"14\" rx=\"2\"/><line x1=\"2\" y1=\"10\" x2=\"22\" y2=\"10\"/></svg>",
+            "cash" => $"<svg {common}><rect x=\"2\" y=\"6\" width=\"20\" height=\"12\" rx=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M6 12h.01M18 12h.01\"/></svg>",
+            "receipt" => $"<svg {common}><path d=\"M4 2v20l3-2 3 2 3-2 3 2 3-2 1 2V2\"/><line x1=\"8\" y1=\"8\" x2=\"16\" y2=\"8\"/><line x1=\"8\" y1=\"12\" x2=\"16\" y2=\"12\"/><line x1=\"8\" y1=\"16\" x2=\"13\" y2=\"16\"/></svg>",
+            "wallet" => $"<svg {common}><path d=\"M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7\"/><circle cx=\"17\" cy=\"13\" r=\"1\"/></svg>",
+            "bank" => $"<svg {common}><path d=\"M3 10l9-7 9 7\"/><line x1=\"3\" y1=\"10\" x2=\"21\" y2=\"10\"/><line x1=\"6\" y1=\"10\" x2=\"6\" y2=\"19\"/><line x1=\"10\" y1=\"10\" x2=\"10\" y2=\"19\"/><line x1=\"14\" y1=\"10\" x2=\"14\" y2=\"19\"/><line x1=\"18\" y1=\"10\" x2=\"18\" y2=\"19\"/><line x1=\"3\" y1=\"21\" x2=\"21\" y2=\"21\"/></svg>",
+            "mobile" => $"<svg {common}><rect x=\"6\" y=\"2\" width=\"12\" height=\"20\" rx=\"2\"/><line x1=\"10\" y1=\"18\" x2=\"14\" y2=\"18\"/></svg>",
+            "calendar" => $"<svg {common}><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><line x1=\"16\" y1=\"2\" x2=\"16\" y2=\"6\"/><line x1=\"8\" y1=\"2\" x2=\"8\" y2=\"6\"/><line x1=\"3\" y1=\"10\" x2=\"21\" y2=\"10\"/></svg>",
+            "chart" => $"<svg {common}><line x1=\"12\" y1=\"20\" x2=\"12\" y2=\"10\"/><line x1=\"18\" y1=\"20\" x2=\"18\" y2=\"4\"/><line x1=\"6\" y1=\"20\" x2=\"6\" y2=\"16\"/></svg>",
+            "users" => $"<svg {common}><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg>",
+            "package" => $"<svg {common}><line x1=\"16.5\" y1=\"9.4\" x2=\"7.5\" y2=\"4.21\"/><path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/><polyline points=\"3.27 6.96 12 12.01 20.73 6.96\"/><line x1=\"12\" y1=\"22.08\" x2=\"12\" y2=\"12\"/></svg>",
+            "tag" => $"<svg {common}><path d=\"M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z\"/><line x1=\"7\" y1=\"7\" x2=\"7.01\" y2=\"7\"/></svg>",
+            "clock" => $"<svg {common}><circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/></svg>",
+            "location" => $"<svg {common}><path d=\"M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/></svg>",
+            "chevron" => $"<svg {common}><polyline points=\"9 18 15 12 9 6\"/></svg>",
+            _ => $"<svg {common}><circle cx=\"12\" cy=\"12\" r=\"9\"/></svg>",
+        };
+    }
+
+    public class SummaryItem
+    {
+        public string Label { get; set; } = "";
+        public decimal Value { get; set; }
+        public string? Icon { get; set; }
+        public string? ColorTheme { get; set; } = "gray";
+        public DateTime? Date { get; set; }
+        public object? Tag { get; set; }
+    }
+
+    /// <summary>One time period (day / month / year, etc.) in the date-range breakdown table.</summary>
+    public class DateBucket
+    {
+        /// <summary>Primary label, e.g. "Jun 2026", "Week 1", "Mon".</summary>
+        public string Label { get; set; } = "";
+        /// <summary>Optional secondary text shown beside the label.</summary>
+        public string? SubLabel { get; set; }
+        /// <summary>Period total. If left 0 and Lines are supplied, it's summed from the lines.</summary>
+        public decimal Value { get; set; }
+        /// <summary>Optional per-collection-type breakdown shown as indented rows under the period.</summary>
+        public List<DateBreakdownLine>? Lines { get; set; }
+        /// <summary>Optional arbitrary payload.</summary>
+        public object? Tag { get; set; }
+    }
+
+    /// <summary>A single collection type's amount within a <see cref="DateBucket"/>.</summary>
+    public class DateBreakdownLine
+    {
+        /// <summary>The collection type (or other category) label.</summary>
+        public string Label { get; set; } = "";
+        public decimal Value { get; set; }
+        public string? ColorTheme { get; set; } = "gray";
+    }
+}

@@ -1,0 +1,114 @@
+/* ── CARD ─────────────────────────────────────────────── */
+.attr-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    font-family: 'Segoe UI', sans-serif;
+    padding: 0 0 20px;
+    margin-top: 10px;
+    /*  margin-bottom: 20px;*/
+}
+
+.attr-card--stretch {
+    height: 100%;
+    margin-bottom: 0;
+    box-sizing: border-box;
+}
+
+/* ── HEADER ───────────────────────────────────────────── */
+.attr-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px 8px 14px;
+    position: relative;
+}
+
+    /* Divider line */
+    .attr-card-header::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 14px;
+        right: 14px;
+        height: 1px;
+        background: var(--border-strong);
+    }
+
+/* Title wrapper (icon + text) */
+.title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Icon */
+.title-icon {
+    display: flex;
+    align-items: center;
+    color: var(--accent);
+}
+
+/* Title text */
+.title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* Action button */
+.action-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+}
+
+    .action-btn:hover {
+        text-decoration: underline;
+    }
+
+/* ── BODY ─────────────────────────────────────────────── */
+.attr-card-body {
+    padding: 30px 20px;
+}
+
+/* ── ROW ──────────────────────────────────────────────── */
+.attr-row {
+    display: flex !important;
+    align-items: center !important;
+    margin-bottom: 10px;
+}
+
+.label {
+    width: 150px;
+    display: inline-block;
+}
+
+.colon {
+    width: 15px;
+    text-align: center;
+}
+
+.value {
+    flex: 1;
+}
+
+/* Prevent wrapping */
+.label,
+.colon,
+.value {
+    white-space: nowrap;
+}
+
+    /* Links */
+    .value a {
+        color: var(--accent);
+        text-decoration: none;
+    }
+
+        .value a:hover {
+            text-decoration: underline;
+        }

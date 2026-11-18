@@ -1,0 +1,131 @@
+@using global::Collection.Web.Components.Services
+@using System.Globalization
+
+@* ==========================================================================
+   GivingChart – "Received today" panel (one segmented bar) and a stacked
+   weekly chart. Pure display: the page passes in an aggregated summary.
+   Every bar has a text equivalent (aria-label / title) and a data table
+   is available to screen readers.
+   ========================================================================== *@
+
+<section class="giving" aria-label="Giving summary">
+
+    @if (Summary is null || Summary.LatestDay is null)
+    {
+        <div class="giving-card giving-empty">
+            <h2 class="giving-title">Giving summary</h2>
+            <p>No collections have been recorded for this period yet. Entries appear here as soon as they are saved.</p>
+        </div>
+    }
+    else
+    {
+        @* ---------- Latest day ---------- *@
+        <div class="giving-card">
+            <h2 class="giving-title">@(Summary.LatestIsToday ? "Received today" : $"Last recorded day · {Summary.LatestDay:ddd, MMM d}")</h2>
+            <div class="giving-total num">
+                <small>@Currency</small>@Summary.LatestTotal.ToString("N2", CultureInfo.CurrentCulture)
+            </div>
+
+            <div class="giving-seg" role="img" aria-label="@SegmentLabel">
+                @foreach (var s in Summary.LatestSlices.Where(s => s.Amount > 0))
+                {
+                    <i style="width:@Pct(s.Amount, Summary.LatestTotal);background:@Color(s.ColorIndex)" title="@s.Name: @Money(s.Amount)"></i>
+                }
+            </div>
+
+            <ul class="giving-legend">
+                @foreach (var s in Summary.LatestSlices)
+                {
+                    <li>
+                        <span class="giving-key"><span class="giving-sw" style="background:@Color(s.ColorIndex)"></span>@s.Name</span>
+                        <span class="giving-val num">@Currency @Money(s.Amount)</span>
+                        <span class="giving-share">@Share(s.Amount, Summary.LatestTotal) of the day</span>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        @* ---------- Weekly chart ---------- *@
+        <div class="giving-card">
+            <h2 class="giving-title">Last @Summary.Weeks.Count weeks</h2>
+            <p class="giving-sub">Total received each week (Sunday to Saturday), split by collection. The bold date is the current week.</p>
+
+            <div class="giving-bars" role="group" aria-label="Weekly totals">
+                @foreach (var w in Summary.Weeks)
+                {
+                    <div class="giving-bar @(w.IsCurrent ? "is-current" : "")" role="img" aria-label="@WeekLabel(w)" title="@WeekLabel(w)">
+                        @foreach (var s in w.Slices.Where(s => s.Amount > 0))
+                        {
+                            <i style="height:@Height(s.Amount);background:@Color(s.ColorIndex)"></i>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="giving-axis" aria-hidden="true">
+                @foreach (var w in Summary.Weeks)
+                {
+                    <span class="@(w.IsCurrent ? "is-current" : "")">@w.Label</span>
+                }
+            </div>
+
+            <ul class="giving-legend giving-legend--inline">
+                @foreach (var name in Summary.Collections)
+                {
+                    <li><span class="giving-key"><span class="giving-sw" style="background:@Color(Summary.Collections.ToList().IndexOf(name))"></span>@name</span></li>
+                }
+            </ul>
+        </div>
+    }
+</section>
+
+@code {
+
+    #region Parameters
+
+    /// <summary>Aggregated figures (null while loading or when nothing was found).</summary>
+    [Parameter] public GivingSummary? Summary { get; set; }
+
+    /// <summary>Currency code shown beside amounts, e.g. JMD.</summary>
+    [Parameter] public string Currency { get; set; } = "";
+
+    #endregion
+
+    #region Private Fields
+
+    /// <summary>Plot height in pixels that the tallest week fills.</summary>
+    private const double PlotHeight = 180;
+
+    #endregion
+
+    #region Helpers
+
+    /// <summary>Maps a collection's colour index to one of the six chart tokens (wraps for more).</summary>
+    private static string Color(int index) => $"var(--chart-{(Math.Max(index, 0) % 6) + 1})";
+
+    private static string Money(decimal value) => value.ToString("N2", CultureInfo.CurrentCulture);
+
+    private static string Share(decimal part, decimal whole) =>
+        whole <= 0 ? "0%" : ((double)(part / whole * 100)).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>CSS width (percent) of a segment; invariant culture keeps the dot decimal separator.</summary>
+    private static string Pct(decimal part, decimal whole) =>
+        whole <= 0 ? "0%" : $"{(double)(part / whole * 100):0.##}%".Replace(',', '.');
+
+    private string Height(decimal amount)
+    {
+        var max = Summary?.Weeks.Max(w => w.Total) ?? 0;
+        if (max <= 0) return "0px";
+        var px = Math.Max(2, (double)(amount / max) * PlotHeight);
+        return px.ToString("0.#", CultureInfo.InvariantCulture) + "px";
+    }
+
+    private string SegmentLabel =>
+        string.Join(", ", Summary!.LatestSlices.Select(s => $"{s.Name} {Share(s.Amount, Summary.LatestTotal)}"));
+
+    private string WeekLabel(ChartWeek w) =>
+        w.Total <= 0
+            ? $"Week of {w.Label}: nothing recorded"
+            : $"Week of {w.Label}: {Currency} {Money(w.Total)} — " + string.Join(", ", w.Slices.Select(s => $"{s.Name} {Money(s.Amount)}"));
+
+    #endregion
+}

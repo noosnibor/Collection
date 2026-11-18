@@ -1,0 +1,65 @@
+@* Hero – full-page landing shell: top bar (brand + theme switch), a title block and a content slot.
+   Used by the portal home page. The old stock-photo cover was removed so the page is fast,
+   works offline and respects light / dark mode. *@
+
+<div class="hero-page">
+
+    @* Banner: translucent top bar over a blue gradient, with the title centred. *@
+    <section class="hero-banner @(string.IsNullOrWhiteSpace(Title) ? "is-compact" : null)">
+        <header class="hero-bar">
+            <div class="hero-bar__inner">
+                <div class="hero-brand">
+                    <span class="hero-brand__mark" aria-hidden="true">
+                        @((MarkupString)Icons.Get("grid", "currentColor", 20))
+                    </span>
+                    <span>@BrandName</span>
+                </div>
+
+                <div class="hero-bar__actions">
+                    <span class="hero-user">@(string.IsNullOrWhiteSpace(UserName) ? "Welcome" : UserName)</span>
+                    @HeaderActions
+                    <ThemeToggle />
+                </div>
+            </div>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <div class="hero-title-block">
+                <h1 class="hero-title">@Title</h1>
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p class="hero-subtitle">@Subtitle</p>
+                }
+            </div>
+        }
+    </section>
+
+    @* With no title (sign-in page) the content card overlaps the banner. *@
+    <div class="hero-body @(string.IsNullOrWhiteSpace(Title) ? "is-overlap" : null)">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    /// <summary>Large heading shown at the top of the page.</summary>
+    [Parameter] public string Title { get; set; } = "";
+
+    /// <summary>Line of text under the heading.</summary>
+    [Parameter] public string Subtitle { get; set; } = "";
+
+    /// <summary>Ignored – kept so existing markup that still passes an image keeps compiling.</summary>
+    [Parameter] public string? ImageUrl { get; set; }
+
+    /// <summary>Name shown next to the logo in the top bar.</summary>
+    [Parameter] public string BrandName { get; set; } = "";
+
+    /// <summary>Optional text shown in the top bar (left empty on the public home page).</summary>
+    [Parameter] public string UserName { get; set; } = "";
+
+    /// <summary>Extra buttons for the top bar.</summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+
+    /// <summary>The page body.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

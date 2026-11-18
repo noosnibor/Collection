@@ -1,0 +1,23 @@
+@* FormSection – a titled group of related form fields (used to structure long forms). *@
+
+<section class="form-section">
+    <header class="form-section__head">
+        <h3 class="form-section__title">@Title</h3>
+        @if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <p class="form-section__desc">@Description</p>
+        }
+    </header>
+    @ChildContent
+</section>
+
+@code {
+    /// <summary>Section heading, e.g. "Who gave".</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>One line explaining what belongs in the section.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>The fields.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

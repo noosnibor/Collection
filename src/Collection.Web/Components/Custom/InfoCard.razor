@@ -1,0 +1,397 @@
+@* InfoCard.razor
+   Review panel. Pass ANY model object and it reflects over the public properties to show:
+     • a status chip + progress bar built from the model's [Required] / [Range] rules
+     • the values, grouped into sections with [InfoGroup("…")] (one default section otherwise)
+     • an optional highlighted figure (e.g. the converted amount)
+     • a small footer with the record id and who/when, kept out of the main list.
+   Or pass an explicit Fields list to take full control. Passwords are never shown. *@
+
+@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+@using System.Reflection
+@using System.Text.RegularExpressions
+@using global::Collection.Library.DataTransferObject
+
+<aside class="rv" aria-label="@Title">
+
+    @* ---------- Header: icon, title, status ---------- *@
+    <div class="rv-head">
+        <div class="rv-titlebar">
+            <div class="rv-icon" aria-hidden="true">
+                @if (Icon is not null)
+                {
+                    @Icon
+                }
+                else if (Img is not null)
+                {
+                    <img width="40" height="40" src="@Img" alt="" />
+                }
+                else
+                {
+                    @((MarkupString)Icons.Get("info", "currentColor", 24))
+                }
+            </div>
+            <div class="rv-heading">
+                <h2 class="rv-title">@Title</h2>
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p class="rv-subtitle">@Subtitle</p>
+                }
+            </div>
+        </div>
+
+        @{
+            var view = Resolve();
+        }
+
+        @if (view.RequiredTotal > 0)
+        {
+            var left = view.RequiredTotal - view.RequiredDone;
+            var pct = (int)Math.Round(100d * view.RequiredDone / view.RequiredTotal);
+
+            <div class="rv-status">
+                <span class="rv-chip @(left == 0 ? "rv-chip--ok" : "rv-chip--wait")">
+                    @(left == 0 ? "Ready to save" : left == 1 ? "1 field left" : $"{left} fields left")
+                </span>
+                <span class="rv-count">@view.RequiredDone of @view.RequiredTotal required</span>
+            </div>
+            <div class="rv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="@view.RequiredTotal"
+                 aria-valuenow="@view.RequiredDone" aria-label="Required fields complete">
+                <i style="width:@(pct)%"></i>
+            </div>
+        }
+    </div>
+
+    @* ---------- Sections ---------- *@
+    @if (view.Groups.Count == 0)
+    {
+        <p class="rv-empty">No information to display.</p>
+    }
+
+    @foreach (var group in view.Groups)
+    {
+        <section class="rv-group">
+            @if (!string.IsNullOrEmpty(group.Name))
+            {
+                <h3 class="rv-group-title">@group.Name</h3>
+            }
+            <dl class="rv-list">
+                @foreach (var f in group.Fields)
+                {
+                    <div class="rv-row @(f.Wide ? "rv-row--wide" : null)">
+                        <dt>
+                            @if (f.Required)
+                            {
+                                <span class="rv-tick @(f.Done ? "rv-tick--done" : "rv-tick--todo")" aria-hidden="true">
+                                    @((MarkupString)(f.Done ? Tick : Ring))
+                                </span>
+                                <span class="visually-hidden">@(f.Done ? "Complete: " : "Required: ")</span>
+                            }
+                            @f.Label
+                        </dt>
+                        <dd>
+                            @if (f.Active.HasValue)
+                            {
+                                <span class="rv-chip @(f.Active.Value ? "rv-chip--ok" : "rv-chip--off")">@(f.Active.Value ? "Active" : "Inactive")</span>
+                            }
+                            else if (string.IsNullOrWhiteSpace(f.Value))
+                            {
+                                <span class="rv-na">@(f.Required ? "Not set" : "Not provided")</span>
+                            }
+                            else
+                            {
+                                @f.Value
+                            }
+                        </dd>
+                    </div>
+                }
+            </dl>
+        </section>
+    }
+
+    @* ---------- Highlighted figure ---------- *@
+    @if (!string.IsNullOrWhiteSpace(HighlightValue))
+    {
+        <div class="rv-highlight">
+            @if (!string.IsNullOrWhiteSpace(HighlightNote))
+            {
+                <small>@HighlightNote</small>
+            }
+            <b>@HighlightValue</b>
+        </div>
+    }
+
+    @* ---------- Footer ---------- *@
+    @if (view.RecordId is not null || view.Who is not null)
+    {
+        <footer class="rv-foot">
+            @if (view.Who is not null)
+            {
+                <span>Entered by <strong>@view.Who</strong>@(view.When is null ? "" : " · " + view.When)</span>
+            }
+            @if (view.RecordId is not null)
+            {
+                <span>Record ID <code>@view.RecordId</code></span>
+            }
+        </footer>
+    }
+</aside>
+
+@inject LocalTimeService LocalTime
+
+@code {
+
+    #region Parameters
+
+    /// <summary>Any model instance. Its public properties are rendered automatically.</summary>
+    [Parameter] public object? Model { get; set; }
+
+    /// <summary>Optional explicit fields. If provided, these are used instead of reflecting over Model.</summary>
+    [Parameter] public List<InfoField>? Fields { get; set; }
+
+    /// <summary>Property names to skip when reflecting over Model.</summary>
+    [Parameter] public string[]? Exclude { get; set; }
+
+    /// <summary>
+    /// Display text per property name, for values that are keys (e.g. a member-type Guid) and
+    /// should show a readable name instead. Example: { ["flngMemberTypeKey"] = "Full member" }.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string?>? ValueOverrides { get; set; }
+
+    /// <summary>Optional custom icon markup.</summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+
+    [Parameter] public string? Img { get; set; } = null;
+
+    [Parameter] public string Title { get; set; } = "Review";
+    [Parameter] public string Subtitle { get; set; } = "";
+
+    /// <summary>Optional big figure under the sections, e.g. "JMD 15,640.00".</summary>
+    [Parameter] public string? HighlightValue { get; set; }
+
+    /// <summary>Small line above the highlighted figure, e.g. "US$ 100.00 × 156.40".</summary>
+    [Parameter] public string? HighlightNote { get; set; }
+
+    #endregion
+
+    #region Private Types
+
+    private sealed record Group(string Name, List<InfoField> Fields);
+
+    private sealed record View(List<Group> Groups, int RequiredTotal, int RequiredDone, string? RecordId, string? Who, string? When);
+
+    #endregion
+
+    #region Private Fields
+
+    private const string Tick = "<svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M8 12.5l2.7 2.7L16 9.5'/></svg>";
+    private const string Ring = "<svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' stroke-width='1.8'><circle cx='12' cy='12' r='9'/></svg>";
+
+    #endregion
+
+    #region View building
+
+    private View Resolve()
+    {
+        string? recordId = null, who = null, when = null;
+        List<InfoField> fields;
+
+        if (Fields is { Count: > 0 })
+        {
+            fields = Fields;
+        }
+        else if (Model is null)
+        {
+            fields = [];
+        }
+        else
+        {
+            fields = BuildFromModel(Model, out recordId, out who, out when);
+        }
+
+        // Group in order of first appearance; fields without a group share one unnamed section.
+        var groups = fields
+            .GroupBy(f => f.Group ?? string.Empty)
+            .Select(g => new Group(g.Key, g.ToList()))
+            .ToList();
+
+        var required = fields.Where(f => f.Required).ToList();
+        return new View(groups, required.Count, required.Count(f => f.Done), recordId, who, when);
+    }
+
+    private List<InfoField> BuildFromModel(object model, out string? recordId, out string? who, out string? when)
+    {
+        recordId = null; who = null; when = null;
+        var exclude = Exclude ?? [];
+
+        var props = model.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+            .Where(IsDisplayable)
+            .Where(ShouldInclude)
+            .OrderBy(GetOrder)
+            .ThenBy(p => p.MetadataToken)
+            .ToList();
+
+        var list = new List<InfoField>();
+        foreach (var p in props)
+        {
+            var value = p.GetValue(model);
+            var underlying = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+
+            // Technical fields go to the footer.
+            if (underlying == typeof(Guid) && p.Name.Equals("flngKey", StringComparison.OrdinalIgnoreCase))
+            {
+                recordId = value?.ToString();
+                continue;
+            }
+            if (p.Name.Equals("fstrWho", StringComparison.OrdinalIgnoreCase)) { who = value?.ToString(); continue; }
+            if (p.Name.Equals("fdtmWhen", StringComparison.OrdinalIgnoreCase) && value is DateTime w) { when = LocalTime.ToLocal(w).ToString("MMM d, yyyy h:mm tt"); continue; }
+
+            if (exclude.Contains(p.Name)) continue;
+
+            var field = new InfoField
+            {
+                Label = GetLabel(p),
+                Group = p.GetCustomAttribute<InfoGroupAttribute>()?.Name,
+                Wide = IsWide(p)
+            };
+
+            SetRequirement(p, value, field);
+
+            if (ValueOverrides is not null && ValueOverrides.TryGetValue(p.Name, out var overrideText))
+            {
+                field.Value = overrideText;
+            }
+            else if (underlying == typeof(string) && p.Name.Contains("password", StringComparison.OrdinalIgnoreCase))
+            {
+                // Never show a password; the "Password changed" flag tells the story.
+                field.Value = string.IsNullOrEmpty(value as string) ? null : "Hidden";
+            }
+            else if (underlying == typeof(bool))
+            {
+                if (value is bool b) field.Active = b;
+            }
+            else
+            {
+                field.Value = FormatValue(value, underlying);
+            }
+
+            list.Add(field);
+        }
+
+        return list;
+    }
+
+    /// <summary>Marks a field as required and complete using the model's DataAnnotations.</summary>
+    private static void SetRequirement(PropertyInfo p, object? value, InfoField field)
+    {
+        var range = p.GetCustomAttribute<RangeAttribute>();
+        var isRequired = p.GetCustomAttribute<RequiredAttribute>() is not null
+                         || (range is not null && Convert.ToDouble(range.Minimum) > 0);
+
+        field.Required = isRequired;
+        if (!isRequired) return;
+
+        field.Done = value switch
+        {
+            null => false,
+            string s => !string.IsNullOrWhiteSpace(s),
+            Guid g => g != Guid.Empty,
+            DateTime d => d != default,
+            bool => true,
+            IConvertible c when range is not null => Convert.ToDouble(c) >= Convert.ToDouble(range.Minimum),
+            _ => true
+        };
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private static bool IsDisplayable(PropertyInfo p)
+    {
+        var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+        return t.IsPrimitive || t.IsEnum
+            || t == typeof(string) || t == typeof(decimal)
+            || t == typeof(DateTime) || t == typeof(DateTimeOffset)
+            || t == typeof(DateOnly) || t == typeof(TimeOnly)
+            || t == typeof(Guid);
+    }
+
+    private static bool ShouldInclude(PropertyInfo p)
+    {
+        var display = p.GetCustomAttribute<DisplayAttribute>();
+        if (display?.GetAutoGenerateField() == false) return false;
+
+        var scaffold = p.GetCustomAttribute<ScaffoldColumnAttribute>();
+        return scaffold is not { Scaffold: false };
+    }
+
+    private static string GetLabel(PropertyInfo p)
+    {
+        var display = p.GetCustomAttribute<DisplayAttribute>();
+        if (!string.IsNullOrWhiteSpace(display?.Name)) return display!.Name!;
+
+        var displayName = p.GetCustomAttribute<DisplayNameAttribute>();
+        if (!string.IsNullOrWhiteSpace(displayName?.DisplayName)) return displayName!.DisplayName;
+
+        return Humanize(p.Name);
+    }
+
+    private static int GetOrder(PropertyInfo p)
+        => p.GetCustomAttribute<DisplayAttribute>()?.GetOrder() ?? int.MaxValue;
+
+    private static bool IsWide(PropertyInfo p)
+    {
+        if (p.GetCustomAttribute<DataTypeAttribute>()?.DataType == DataType.MultilineText) return true;
+
+        var n = p.Name.ToLowerInvariant();
+        return n.Contains("address") && !n.Contains("email") || n.Contains("description")
+            || n.Contains("notes") || n.Contains("comment") || n.Contains("remark");
+    }
+
+    private static string Humanize(string name)
+        => Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+
+    private static string? FormatValue(object? value, Type underlying)
+    {
+        if (value is null) return null;
+        if (underlying == typeof(DateTime)) return ((DateTime)value).ToString("MMM d, yyyy");
+        if (underlying == typeof(DateTimeOffset)) return ((DateTimeOffset)value).ToString("MMM d, yyyy");
+        if (underlying == typeof(DateOnly)) return ((DateOnly)value).ToString("MMM d, yyyy");
+
+        var s = value.ToString();
+        return string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
+    #endregion
+
+    #region Public Types
+
+    public class InfoField
+    {
+        /// <summary>The field caption, e.g. "Location Name".</summary>
+        public string Label { get; set; } = string.Empty;
+
+        /// <summary>The text value to show. Leave null/empty to show "Not set / Not provided".</summary>
+        public string? Value { get; set; }
+
+        /// <summary>Set true/false to render an Active / Inactive chip instead of text.</summary>
+        public bool? Active { get; set; }
+
+        /// <summary>Span the full width (good for addresses).</summary>
+        public bool Wide { get; set; }
+
+        /// <summary>Section heading this field belongs to.</summary>
+        public string? Group { get; set; }
+
+        /// <summary>The form requires this field.</summary>
+        public bool Required { get; set; }
+
+        /// <summary>The required field has a value.</summary>
+        public bool Done { get; set; }
+    }
+
+    #endregion
+}

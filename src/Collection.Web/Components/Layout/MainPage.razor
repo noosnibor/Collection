@@ -1,0 +1,27 @@
+@page "/"
+
+@layout EmptyLayout
+@rendermode InteractiveServer
+
+<PageTitle>WAFIF Collection Management Portal</PageTitle>
+
+@* Public landing page: choose the church / application to sign in to. *@
+
+<Hero Title="Collection Management Portal"
+      Subtitle="Secure access to church collection services"
+      BrandName="WAFIF Portal">
+
+    <main class="portal-main">
+        <div class="portal-intro">
+            <h2 class="portal-intro__heading">Applications</h2>
+            <p class="portal-intro__sub">Select your church to get started</p>
+        </div>
+
+        <div class="portal-grid">
+            <CardButton Title="Worship and Faith International Fellowship"
+                        Subtitle="Sign in to manage offerings, tithes and reports"
+                        NavigateTo="/login?msg=WAFIF" />
+        </div>
+    </main>
+
+</Hero>

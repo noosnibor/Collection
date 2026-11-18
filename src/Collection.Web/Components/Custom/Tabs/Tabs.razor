@@ -1,0 +1,312 @@
+@* Tabs.razor — container that renders top-level tabs and their sub-tabs *@
+
+<div class="tab-container">
+
+    <!-- NAV -->
+    <nav class="tab-nav" style="@HeaderStyle">
+        @foreach (var tab in VisibleTabs)
+        {
+            var isActive = ActiveTab == tab.Id;
+            var isDisabled = tab.Disabled;
+            var tip = isDisabled && !string.IsNullOrEmpty(tab.DisabledReason)
+                        ? tab.DisabledReason
+                        : tab.SubTitle;
+
+            @* The slot wrapper exists only to capture hover: browsers never fire a
+               tooltip on a disabled control, so the title has to live on a parent
+               that still receives pointer events. *@
+            <span class="tab-slot @(isDisabled ? "is-disabled" : "")"
+                  title="@tip"
+                  style="@(isDisabled ? "cursor:not-allowed;" : "")">
+                <button type="button"
+                        class="tab-btn @(isActive ? "active" : "") @(isDisabled ? "disabled" : "")"
+                        disabled="@isDisabled"
+                        aria-selected="@isActive"
+                        aria-disabled="@isDisabled"
+                        @onclick="() => ChangeTab(tab.Id)">
+                    @if (!string.IsNullOrEmpty(tab.Icon))
+                    {
+                        @((MarkupString)GetIconSvg(tab.Icon, "currentColor", 15))
+                    }
+                    <span class="tab-label" style="@(isActive ? "" : TextStyle)">@tab.Label</span>
+                    @if (tab.Badge?.Invoke() is int badgeValue && badgeValue > 0)
+                    {
+                        <span class="badge">@badgeValue</span>
+                    }
+                </button>
+            </span>
+        }
+    </nav>
+
+    <!-- BODY -->
+    <div class="tab-body @animationClass" @key="ActiveTab">
+
+        @{
+            var current = tabs.FirstOrDefault(t => t.Id == ActiveTab);
+        }
+
+        @if (current != null)
+        {
+            <!-- Sub-tab nav (only if this tab has sub-tabs registered) -->
+            @if (current.SubTabs != null && current.SubTabs.Any(st => st.Visible))
+            {
+                <nav class="sub-tab-nav">
+                    @foreach (var sub in current.SubTabs.Where(s => s.Visible))
+                    {
+                        var subIsActive = current.ActiveSubTabId == sub.Id;
+                        var subDisabled = sub.Disabled;
+                        <span class="sub-tab-slot @(subDisabled ? "is-disabled" : "")"
+                              title="@(subDisabled ? sub.DisabledReason : "")"
+                              style="@(subDisabled ? "cursor:not-allowed;" : "")">
+                            <button type="button"
+                                    class="sub-tab-btn @(subIsActive ? "active" : "") @(subDisabled ? "disabled" : "")"
+                                    disabled="@subDisabled"
+                                    aria-selected="@subIsActive"
+                                    aria-disabled="@subDisabled"
+                                    style="@(subIsActive && !string.IsNullOrWhiteSpace(HeaderColor) ? $"--accent: {HeaderColor};" : "")"
+                                    @onclick="() => ChangeSubTab(current, sub.Id)">
+                                @if (!string.IsNullOrEmpty(sub.Icon))
+                                {
+                                    @((MarkupString)GetIconSvg(sub.Icon, "currentColor", 14))
+                                }
+                                <span>@sub.Label</span>
+                                @if (sub.Badge?.Invoke() is int subBadge && subBadge > 0)
+                                {
+                                    <span class="sub-badge">@subBadge</span>
+                                }
+                            </button>
+                        </span>
+                    }
+                </nav>
+
+                <div class="sub-tab-body @subAnimationClass" @key="@($"{current.Id}_{current.ActiveSubTabId}")">
+                    @{
+                        var activeSub = current.SubTabs.FirstOrDefault(s => s.Id == current.ActiveSubTabId);
+                    }
+                    @activeSub?.Content
+                </div>
+            }
+            else
+            {
+                @current.Content
+            }
+        }
+
+    </div>
+
+</div>
+
+<CascadingValue Value="this">
+    @ChildContent
+</CascadingValue>
+
+
+@code {
+
+    #region Class variables
+    private List<TabItem> tabs = new();
+    private IEnumerable<TabItem> VisibleTabs => tabs.Where(t => t.Visible);
+    private string animationClass = "";
+    private string subAnimationClass = "";
+    #endregion
+
+    #region Parameters
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string ActiveTab { get; set; } = "";
+    [Parameter] public EventCallback<string> ActiveTabChanged { get; set; }
+    /// <summary>Optional custom colour for the tab strip. Leave null to follow the theme.</summary>
+    [Parameter] public string? HeaderColor { get; set; }
+    /// <summary>Optional text colour for inactive tabs when <see cref="HeaderColor"/> is set.</summary>
+    [Parameter] public string? TextColor { get; set; }
+
+    /// <summary>When the active tab becomes hidden or disabled, automatically move to
+    /// the first usable tab. Set false to leave the body empty instead.</summary>
+    [Parameter] public bool AutoFallbackActiveTab { get; set; } = true;
+
+    private string HeaderStyle => string.IsNullOrWhiteSpace(HeaderColor) ? "" : $"background:{HeaderColor};";
+    private string TextStyle => string.IsNullOrWhiteSpace(TextColor) ? "" : $"color:{TextColor};";
+    #endregion
+
+    #region Register Tabs
+    internal void RegisterTab(TabItem tab)
+    {
+        if (!tabs.Any(t => t.Id == tab.Id))
+        {
+            tabs.Add(tab);
+
+            if (string.IsNullOrEmpty(ActiveTab) && tab.Visible && !tab.Disabled)
+                ActiveTab = tab.Id;
+
+            EnsureValidActiveTab();
+            StateHasChanged();
+        }
+    }
+
+    internal void RegisterSubTab(string parentTabId, SubTabItem sub)
+    {
+        var parent = tabs.FirstOrDefault(t => t.Id == parentTabId);
+        if (parent == null) return;
+
+        if (!parent.SubTabs.Any(s => s.Id == sub.Id))
+        {
+            parent.SubTabs.Add(sub);
+
+            // If no active sub-tab is set yet, default to the first usable one.
+            // If one was pre-seeded (via InitialSubTab) but doesn't match any registered
+            // sub yet, keep it — it'll resolve when that sub-tab registers.
+            if (string.IsNullOrEmpty(parent.ActiveSubTabId) && sub.Visible && !sub.Disabled)
+                parent.ActiveSubTabId = sub.Id;
+
+            EnsureValidActiveSubTab(parent);
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Called by child Tab / SubTab components when their parameters change,
+    /// so runtime changes to Visible / Disabled / Label are reflected in the nav.</summary>
+    internal void SyncState()
+    {
+        EnsureValidActiveTab();
+        foreach (var t in tabs) EnsureValidActiveSubTab(t);
+        StateHasChanged();
+    }
+    #endregion
+
+    #region Change Tabs
+    private async Task ChangeTab(string tabId)
+    {
+        if (ActiveTab == tabId) return;
+
+        var target = tabs.FirstOrDefault(t => t.Id == tabId);
+        if (target == null || !target.Visible || target.Disabled) return;
+
+        var visibleList = VisibleTabs.ToList();
+        var currentIndex = visibleList.FindIndex(t => t.Id == ActiveTab);
+        var newIndex = visibleList.FindIndex(t => t.Id == tabId);
+
+        animationClass = newIndex > currentIndex ? "slide-left" : "slide-right";
+        ActiveTab = tabId;
+
+        await ActiveTabChanged.InvokeAsync(tabId);
+    }
+
+    private void ChangeSubTab(TabItem parent, string subId)
+    {
+        if (parent.ActiveSubTabId == subId) return;
+
+        var target = parent.SubTabs.FirstOrDefault(s => s.Id == subId);
+        if (target == null || !target.Visible || target.Disabled) return;
+
+        var visibleSubs = parent.SubTabs.Where(s => s.Visible).ToList();
+        var currentIndex = visibleSubs.FindIndex(s => s.Id == parent.ActiveSubTabId);
+        var newIndex = visibleSubs.FindIndex(s => s.Id == subId);
+
+        subAnimationClass = newIndex > currentIndex ? "sub-slide-left" : "sub-slide-right";
+        parent.ActiveSubTabId = subId;
+        parent.OnSubTabChanged?.Invoke(subId);
+
+        StateHasChanged();
+    }
+    #endregion
+
+    #region Visibility / enablement
+
+    /// <summary>If the active tab is hidden or disabled, fall back to the first usable tab.</summary>
+    private void EnsureValidActiveTab()
+    {
+        if (!AutoFallbackActiveTab) return;
+
+        var current = tabs.FirstOrDefault(t => t.Id == ActiveTab);
+        if (current != null && current.Visible && !current.Disabled) return;
+
+        var fallback = tabs.FirstOrDefault(t => t.Visible && !t.Disabled);
+        if (fallback == null || fallback.Id == ActiveTab) return;
+
+        ActiveTab = fallback.Id;
+        ActiveTabChanged.InvokeAsync(fallback.Id);
+    }
+
+    /// <summary>If a tab's active sub-tab is hidden or disabled, fall back to the first usable one.</summary>
+    private void EnsureValidActiveSubTab(TabItem tab)
+    {
+        if (!AutoFallbackActiveTab) return;
+        if (tab.SubTabs.Count == 0) return;
+
+        var current = tab.SubTabs.FirstOrDefault(s => s.Id == tab.ActiveSubTabId);
+        if (current != null && current.Visible && !current.Disabled) return;
+
+        var fallback = tab.SubTabs.FirstOrDefault(s => s.Visible && !s.Disabled);
+        if (fallback == null || fallback.Id == tab.ActiveSubTabId) return;
+
+        tab.ActiveSubTabId = fallback.Id;
+        tab.OnSubTabChanged?.Invoke(fallback.Id);
+    }
+
+    #endregion
+
+    #region Public API — query / set sub-tab state
+
+    /// <summary>Programmatically set the active sub-tab on the currently active tab.</summary>
+    public void SetActiveSubTab(string subTabId)
+    {
+        var current = tabs.FirstOrDefault(t => t.Id == ActiveTab);
+        if (current == null) return;
+        SetActiveSubTab(current.Id, subTabId);
+    }
+
+    /// <summary>Programmatically set the active sub-tab on a specific tab. Switches the parent tab too if requested.</summary>
+    public void SetActiveSubTab(string tabId, string subTabId, bool switchParentTab = false)
+    {
+        var tab = tabs.FirstOrDefault(t => t.Id == tabId);
+        if (tab == null) return;
+
+        var sub = tab.SubTabs.FirstOrDefault(s => s.Id == subTabId);
+        if (sub == null || !sub.Visible || sub.Disabled) return;
+
+        if (switchParentTab && ActiveTab != tabId && tab.Visible && !tab.Disabled)
+        {
+            ActiveTab = tabId;
+            ActiveTabChanged.InvokeAsync(tabId);
+        }
+
+        ChangeSubTab(tab, subTabId);
+    }
+
+    #endregion
+
+    #region Icon helper
+    private string GetIconSvg(string icon, string color, int size) => Icons.Get(icon, color, size);
+    #endregion
+
+    #region Tab Items
+    public class TabItem
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string SubTitle { get; set; } = "";
+        public string? Icon { get; set; }
+        public bool Visible { get; set; } = true;
+        public bool Disabled { get; set; } = false;
+        public string DisabledReason { get; set; } = "";
+        public Func<int?>? Badge { get; set; }
+        public RenderFragment? Content { get; set; }
+
+        // Sub-tab support
+        public List<SubTabItem> SubTabs { get; set; } = new();
+        public string ActiveSubTabId { get; set; } = "";
+        public Action<string>? OnSubTabChanged { get; set; }
+    }
+
+    public class SubTabItem
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string? Icon { get; set; }
+        public bool Visible { get; set; } = true;
+        public bool Disabled { get; set; } = false;
+        public string DisabledReason { get; set; } = "";
+        public Func<int?>? Badge { get; set; }
+        public RenderFragment? Content { get; set; }
+    }
+    #endregion
+}

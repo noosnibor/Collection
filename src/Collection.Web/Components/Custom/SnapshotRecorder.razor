@@ -1,0 +1,182 @@
+﻿@*
+    SnapshotRecorder - starts the Snapshot (session replay) recording for the signed-in user.
+
+    Real-world behaviour:
+      * Placed once in MainLayout, so it runs for as long as the user is signed in and moves with them from page to page.
+      * Does nothing unless "Snapshot": { "Enabled": true } is set in appsettings.
+      * Never records a System Admin (built-in or role 6).
+      * The browser script (js/snapshotRecorder.js) records the page and calls back into this component:
+          - StartSession : creates the recording in the database
+          - SendChunk    : saves the next few seconds of recording
+      * Everything is saved under the signed-in user's own name - the browser is never trusted to say who it is.
+      * If the database says no, recording quietly stops - it never interrupts what the user is doing.
+*@
+@implements IAsyncDisposable
+@inject ISnapshotRepository SnapshotRepository
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject UserSessionService Session
+@inject IWebHostEnvironment Env
+@inject IConfiguration Config
+@inject ILogService<SnapshotRecorder> Log
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The browser script (snapshotRecorder.js).</summary>
+    private IJSObjectReference? __module;
+
+    /// <summary>Lets the browser script call the [JSInvokable] methods below.</summary>
+    private DotNetObjectReference<SnapshotRecorder>? __selfRef;
+
+    /// <summary>Cancelled when the layout goes away (sign-out / tab closed) so in-flight saves stop.</summary>
+    private readonly CancellationTokenSource __cts = new();
+
+    private bool __subscribed;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Off unless switched on in appsettings; only for signed-in users.
+        // System Admins are never recorded (they are the people who watch the recordings).
+        if (!Config.GetValue("Snapshot:Enabled", false) || !Session.IsAuthenticated || Session.IsSystemAdmin) return;
+
+        try
+        {
+            __selfRef = DotNetObjectReference.Create(this);
+            __module = await JS.InvokeAsync<IJSObjectReference>("import", __cts.Token, "./js/snapshotRecorder.js");
+
+            // Text inside these elements is replaced by *** in the recording. Tables hold member and giving data,
+            // so they are hidden by default. Change "Snapshot:MaskTextSelector" in appsettings to hide more or less.
+            var options = new
+            {
+                maskTextSelector = Config["Snapshot:MaskTextSelector"] ?? "td, .sn-mask",
+                flushMs = Config.GetValue("Snapshot:FlushSeconds", 5) * 1000
+            };
+
+            await __module.InvokeVoidAsync("start", __cts.Token, __selfRef, options);
+
+            Navigation.LocationChanged += OnLocationChanged;
+            __subscribed = true;
+        }
+        catch (OperationCanceledException) { /* layout closed while starting */ }
+        catch (JSDisconnectedException) { /* browser tab closed */ }
+        catch (Exception ex)
+        {
+            // Recording is a "nice to have": log it and carry on.
+            await Log.LogWarning($"Snapshot could not start: {ex.Message}");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        __cts.Cancel();
+        if (__subscribed) Navigation.LocationChanged -= OnLocationChanged;
+
+        if (__module is not null)
+        {
+            try
+            {
+                await __module.InvokeVoidAsync("stop");
+                await __module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { /* browser already gone */ }
+            catch (OperationCanceledException) { }
+        }
+
+        __selfRef?.Dispose();
+        __cts.Dispose();
+    }
+
+    #endregion
+
+    #region Calls From The Browser Script
+
+    /// <summary>Called once by the browser script: creates the recording and returns its key ("" = stay off).</summary>
+    [JSInvokable]
+    public async Task<string> StartSession(string entryUrl, int viewportW, int viewportH, string userAgent)
+    {
+        try
+        {
+            var username = Session.Username;
+            if (string.IsNullOrWhiteSpace(username) || Session.IsSystemAdmin) return string.Empty;
+
+            var session = new SnapshotSessionDataTransferObject
+            {
+                fstrUsername = username,
+                fstrFullName = Session.FullName ?? string.Empty,
+                fstrLocationKey = Session.LocationKey ?? string.Empty,
+                fstrRole = Session.Role ?? string.Empty,
+                fstrEnvironment = Env.EnvironmentName,
+                fstrEntryUrl = entryUrl,
+                flngViewportW = viewportW,
+                flngViewportH = viewportH,
+                fstrUserAgent = userAgent,
+                fstrWho = username
+            };
+
+            var result = await SnapshotRepository.AddSnapshotSession(session, __cts.Token);
+            return result.IsSuccess ? session.flngKey.ToString() : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Called by the browser script every few seconds with the next piece of recording. Returns false when it was not saved.</summary>
+    [JSInvokable]
+    public async Task<bool> SendChunk(string sessionKey, int sequence, int eventCount,
+                                      long firstMs, long lastMs, string dataBase64,
+                                      SnapshotMarkerDataTransferObject[] markers)
+    {
+        try
+        {
+            if (!Guid.TryParse(sessionKey, out var key) || string.IsNullOrWhiteSpace(Session.Username) || Session.IsSystemAdmin)
+                return false;
+
+            var chunk = new SnapshotChunkDataTransferObject
+            {
+                flngSessionKey = key,
+                flngSequence = sequence,
+                flngEventCount = eventCount,
+                flngFirstEventMs = firstMs,
+                flngLastEventMs = lastMs,
+                fbytData = Convert.FromBase64String(dataBase64),
+                flstMarkers = [.. markers],
+                fstrWho = Session.Username
+            };
+
+            var result = await SnapshotRepository.AddSnapshotChunk(chunk, __cts.Token);
+            return result.IsSuccess;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Page Changes
+
+    /// <summary>Adds a "page change" marker to the recording's timeline.</summary>
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (__module is null) return;
+
+        try
+        {
+            await __module.InvokeVoidAsync("markNavigation", __cts.Token, "/" + Navigation.ToBaseRelativePath(e.Location));
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException) { }
+    }
+
+    #endregion
+}

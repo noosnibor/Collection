@@ -1,0 +1,199 @@
+@page "/3F8YPFZN"
+@attribute [Authorize]
+
+@inject UserSessionService Session
+@inject LocalTimeService LocalTime
+@inject IAuthorizationService AuthorizationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IReportRepository ReportRepository
+@inject ILogService<Home> Log
+
+<PageTitle>Dashboard · WAFIF Collection Management</PageTitle>
+
+@* ==========================================================================
+   Dashboard – greeting, account summary and quick links to the modules the
+   signed-in user is allowed to open.
+   ========================================================================== *@
+
+<div class="dash">
+
+    @* ---------- Welcome ---------- *@
+    <section class="dash-welcome">
+        <div class="dash-eyebrow">
+            <span class="pulse-dot"></span>
+            <span>@Session.LocationKey · @__dateLabel</span>
+        </div>
+
+        <h1 class="dash-title">@GreetingPrefix(), @(Session.FullName ?? "there")</h1>
+        <p class="dash-sub">
+            You are signed in as <strong>@Session.Role</strong>. Pick a module below to get started.
+        </p>
+    </section>
+
+    @* ---------- Account facts ---------- *@
+    <section class="dash-facts" aria-label="Account summary">
+        <div class="dash-fact">
+            <span class="dash-fact__label">Location</span>
+            <span class="dash-fact__value">@(Session.LocationKey ?? "—")</span>
+        </div>
+        <div class="dash-fact">
+            <span class="dash-fact__label">Currency</span>
+            <span class="dash-fact__value">@(Session.CurrencyKey ?? "—")</span>
+        </div>
+        <div class="dash-fact">
+            <span class="dash-fact__label">Role</span>
+            <span class="dash-fact__value">@(Session.Role ?? "—")</span>
+        </div>
+        <div class="dash-fact">
+            <span class="dash-fact__label">Modules available</span>
+            <span class="dash-fact__value">@__allowed.Count</span>
+        </div>
+    </section>
+
+    @* ---------- Giving chart (needs the end-of-day report permission) ---------- *@
+    @if (__canSeeChart)
+    {
+        @if (__chartLoading)
+        {
+            <p class="dash-muted">Loading giving summary…</p>
+        }
+        else if (__chartFailed)
+        {
+            <p class="dash-muted">The giving summary could not be loaded. Reload the page to try again.</p>
+        }
+        else
+        {
+            <GivingChart Summary="__summary" Currency="@(Session.CurrencyKey ?? "")" />
+        }
+    }
+
+    @* ---------- Quick links ---------- *@
+    <section>
+        <h2 class="dash-section-title">Quick access</h2>
+
+        @if (__allowed.Count == 0)
+        {
+            <div class="dash-empty">
+                No modules are assigned to your account yet. Please contact your system administrator.
+            </div>
+        }
+        else
+        {
+            <div class="dash-grid">
+                @foreach (var tile in __allowed)
+                {
+                    <a class="dash-tile" href="@tile.Href">
+                        <span class="dash-tile__icon">@((MarkupString)Icons.Get(tile.Icon, "currentColor", 22))</span>
+                        <span class="dash-tile__text">
+                            <span class="dash-tile__title">@tile.Title</span>
+                            <span class="dash-tile__desc">@tile.Description</span>
+                        </span>
+                        <span class="dash-tile__go">@((MarkupString)Icons.Get("chevron-right", "currentColor", 18))</span>
+                    </a>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+
+    #region Private Types
+
+    /// <summary>A shortcut tile. <see cref="Policy"/> decides who can see it.</summary>
+    private sealed record Tile(string Title, string Description, string Href, string Icon, string Policy);
+
+    #endregion
+
+    #region Private Fields
+
+    private string __dateLabel => LocalTime.Now.ToString("dddd, MMM d");
+
+    private static readonly Tile[] __tiles =
+    [
+        new("Data Entry",       "Record offerings and tithes",         "/CLLGRABS", "archive",     "DataEntry.View"),
+        new("Reports",          "Detail, summary and end-of-day",      "/report",   "chart",       "Report.View"),
+        new("Locations",        "Manage church locations",             "/LOCMR2YB", "globe",       "Location.View"),
+        new("Currencies",       "Exchange rates by location",          "/CURFC42S", "dollar-sign", "Currency.View"),
+        new("Collection Types", "Tithes, offerings, special funds",    "/VELM33UQ", "pie-chart",   "CollectionType.View"),
+        new("Member Types",     "Members, visitors and groups",        "/MEMMUQ44", "users",       "Member.View"),
+        new("Payment Types",    "Cash, cheque, card and transfer",     "/PYMRST02", "credit-card", "Payment.View"),
+        new("Users",            "Accounts, roles and access",          "/user",     "user-check",  "User.View")
+    ];
+
+    private List<Tile> __allowed = [];
+
+    // Giving chart state
+    private const int WeekCount = 8;
+    private bool __canSeeChart;
+    private bool __chartLoading = true;
+    private bool __chartFailed;
+    private GivingSummary? __summary;
+
+    #endregion
+
+    #region Lifecycle
+
+    /// <summary>Only the tiles the user has permission for are shown.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        var allowed = new List<Tile>();
+
+        foreach (var tile in __tiles)
+        {
+            var result = await AuthorizationService.AuthorizeAsync(state.User, tile.Policy);
+            if (result.Succeeded) allowed.Add(tile);
+        }
+
+        __allowed = allowed;
+
+        // The chart uses the end-of-day report, so it follows that permission.
+        __canSeeChart = (await AuthorizationService.AuthorizeAsync(state.User, "Report.EODSearch")).Succeeded;
+        if (__canSeeChart)
+            await LoadChartAsync();
+    }
+
+    /// <summary>Loads the last weeks of end-of-day totals for the user's location.</summary>
+    private async Task LoadChartAsync()
+    {
+        try
+        {
+            var today = LocalTime.Today;
+            var rows = await ReportRepository.SelectEndOfDayReport(new()
+            {
+                fstrLocation = Session.LocationKey,
+                fdtmTransactionStart = GivingChartService.QueryStart(today, WeekCount),
+                fdtmTransactionEnd = today
+            });
+
+            __summary = GivingChartService.Build(rows, today, WeekCount);
+        }
+        catch (Exception ex)
+        {
+            // The dashboard must still open when the report query fails.
+            __chartFailed = true;
+            await Log.LogError($"Dashboard chart failed: {ex.Message}");
+        }
+        finally
+        {
+            __chartLoading = false;
+        }
+    }
+
+    #endregion
+
+    #region Helpers
+
+    /// <summary>"Good morning / afternoon / evening" based on the local hour.</summary>
+    private string GreetingPrefix()
+    {
+        var hour = LocalTime.Now.Hour;
+
+        if (hour >= 17) return "Good evening";
+        if (hour >= 12) return "Good afternoon";
+        return "Good morning";
+    }
+
+    #endregion
+}

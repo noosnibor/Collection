@@ -1,0 +1,229 @@
+﻿/* ==========================================================================
+   Snapshot page (Components/Pages/Snapshot.razor) - scoped styles.
+   Uses only the portal's own theme tokens from wwwroot/app.css (--surface, --border, --text,
+   --accent ...), so light / dark mode and any later theme change carry over automatically.
+   ========================================================================== */
+
+.sn-shell { display: grid; grid-template-columns: 270px minmax(0, 1fr) 270px; gap: 14px; align-items: start; }
+
+.sn-left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.sn-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    box-shadow: var(--shadow-1);
+    padding: 14px;
+    min-width: 0;
+}
+.sn-panel-title {
+    margin: 0 0 10px;
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-3);
+}
+.sn-empty-text { margin: 4px 0; font-size: .85rem; color: var(--text-3); }
+
+/* ---- search + chips --------------------------------------------------------------------- */
+.sn-search {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    padding: 7px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+    font-size: .85rem;
+}
+.sn-search::placeholder { color: var(--text-3); }
+.sn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.sn-chip {
+    padding: 3px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.sn-chip:hover { background: var(--surface-3); }
+.sn-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* ---- user + visit rows ------------------------------------------------------------------ */
+.sn-row, .sn-session {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sn-session { flex-direction: column; align-items: flex-start; gap: 2px; border-color: var(--border); background: var(--surface-2); margin-bottom: 6px; }
+.sn-row:hover, .sn-session:hover { background: var(--surface-3); }
+.sn-row.active, .sn-session.active { background: var(--accent-soft); border-color: var(--accent); }
+
+.sn-avatar {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: .8rem;
+    font-weight: 700;
+}
+.sn-row-text { display: flex; flex-direction: column; min-width: 0; }
+.sn-row-name { font-size: .88rem; font-weight: 600; }
+.sn-row-meta { font-size: .75rem; color: var(--text-3); }
+
+/* ---- player ----------------------------------------------------------------------------- */
+.sn-center { min-height: 420px; }
+.sn-player-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+.sn-player-host {
+    display: flex;
+    justify-content: center;
+    height: 560px;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--bg);
+    box-shadow: var(--shadow-2);
+}
+.sn-note { margin-top: 10px; padding: 8px 12px; border-radius: 2px; background: var(--warning-soft); color: var(--warning); font-size: .85rem; }
+.sn-empty { display: grid; place-items: center; gap: 8px; min-height: 380px; color: var(--text-3); text-align: center; }
+.sn-empty p { margin: 0; }
+
+/* rrweb-player: follow the portal theme and use our own buttons (its built-in button row is hidden). */
+.sn-player-host ::deep .rr-player { background: transparent; box-shadow: none; }
+.sn-player-host ::deep .rr-controller { background: var(--surface); color: var(--text); border-radius: 0 0 12px 12px; }
+.sn-player-host ::deep .rr-controller__btns { display: none; }
+.sn-player-host ::deep .rr-timeline__time { color: var(--text-2); }
+.sn-player-host ::deep .rr-progress { background: var(--surface-3); }
+.sn-player-host ::deep .rr-progress__step { background: var(--accent); }
+
+/* ---- controls --------------------------------------------------------------------------- */
+.sn-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+.sn-play {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: var(--on-accent);
+    background: var(--accent);
+    box-shadow: none;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+.sn-play:hover { transform: translateY(-1px); box-shadow: none; }
+.sn-time { font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+.sn-speed {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-3);
+}
+.sn-speed-chip {
+    padding: 4px 11px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.sn-speed-chip:hover { background: var(--surface-3); }
+.sn-speed-chip.on { background: var(--accent); color: var(--on-accent); }
+
+.sn-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 12px 4px 5px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text);
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.sn-switch-track { position: relative; width: 34px; height: 20px; border-radius: 2px; background: var(--border-strong); transition: background .15s; }
+.sn-switch-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+.sn-switch.on .sn-switch-track { background: var(--accent); }
+.sn-switch.on .sn-switch-knob { left: 16px; }
+
+/* ---- timeline --------------------------------------------------------------------------- */
+.sn-timeline { position: relative; max-height: 600px; overflow-y: auto; }
+.sn-timeline::before { content: ""; position: absolute; left: 55px; top: 14px; bottom: 14px; width: 2px; background: var(--border); }
+.sn-marker {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 8px;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sn-marker:hover { background: var(--surface-3); }
+.sn-marker.active { background: var(--warning-soft); border-color: var(--warning); }
+.sn-marker-time { flex: none; width: 36px; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.sn-marker-dot { position: relative; flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--surface); }
+.sn-marker.navigate .sn-marker-dot { background: var(--success); }
+.sn-marker.error .sn-marker-dot { background: var(--danger); }
+.sn-marker-label { flex: 1; min-width: 0; font-size: .85rem; line-height: 1.35; word-break: break-word; }
+.sn-tag { flex: none; padding: 1px 8px; border-radius: 2px; background: var(--surface-3); color: var(--text-2); font-size: .68rem; font-weight: 600; }
+
+.sn-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: .75rem; color: var(--text-3); }
+.sn-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.sn-dot.navigate { background: var(--success); }
+.sn-dot.error { background: var(--danger); }
+
+button.sn-chip:focus-visible, button.sn-row:focus-visible, button.sn-session:focus-visible, button.sn-marker:focus-visible,
+button.sn-speed-chip:focus-visible, button.sn-switch:focus-visible, button.sn-play:focus-visible, .sn-search:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ---- narrower screens: stack the three columns -------------------------------------------- */
+@media (max-width: 1280px) {
+    .sn-shell { grid-template-columns: 250px minmax(0, 1fr); }
+    .sn-right { grid-column: 1 / -1; }
+    .sn-player-host { height: 480px; }
+}
+@media (max-width: 860px) {
+    .sn-shell { grid-template-columns: 1fr; }
+    .sn-player-host { height: 380px; }
+}

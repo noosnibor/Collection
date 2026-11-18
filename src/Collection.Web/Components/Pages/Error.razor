@@ -1,0 +1,36 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Something went wrong</PageTitle>
+
+@* Static page shown by UseExceptionHandler. No technical detail is exposed to the user;
+   the request id is shown so support can find the entry in the server log. *@
+<div class="error-page">
+    <h1>Something went wrong</h1>
+    <p>An unexpected error occurred while processing your request. Please try again.</p>
+
+    @if (ShowRequestId)
+    {
+        <p class="text-muted">Request ID: <code>@RequestId</code></p>
+    }
+
+    <a class="btn btn-primary" href="/">Back to home</a>
+</div>
+
+@code {
+    #region Parameters
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    #endregion
+
+    #region Properties
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    #endregion
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

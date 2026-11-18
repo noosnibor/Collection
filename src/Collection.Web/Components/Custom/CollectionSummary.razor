@@ -1,0 +1,125 @@
+@using System.Globalization
+@using global::Collection.Library.Model
+
+@* ==========================================================================
+   CollectionSummary – one panel: total plus a breakdown by collection type, currency and
+   payment type for the records currently shown. Pure display: the page passes
+   the rows and the name lookups. Only ACTIVE records are counted and every
+   amount is the local (converted) amount, matching the table's own total.
+   ========================================================================== *@
+
+<section class="sb-wrap" aria-label="Collection summary">
+
+    <div class="sb-top">
+        <div>
+            <small>Total collected</small>
+            <b><span>@LocalCurrency</span>@__total.ToString("N2", CultureInfo.CurrentCulture)</b>
+        </div>
+        <p>@__count @(__count == 1 ? "record" : "records")@if (!string.IsNullOrWhiteSpace(Caption)) { <br />@Caption }</p>
+    </div>
+
+    <div class="sb-grid">
+        @foreach (var card in __cards)
+        {
+            <div class="sb-g">
+                <h4>By @card.Title.ToLowerInvariant()</h4>
+                @if (card.Rows.Count == 0)
+                {
+                    <p class="sb-none">No records yet</p>
+                }
+                else
+                {
+                    <div class="sb-bar" role="img" aria-label="@card.Title share of total">
+                        @for (var i = 0; i < card.Rows.Count; i++)
+                        {
+                            var row = card.Rows[i];
+                            <u title="@row.Label @row.Share.ToString("0.#", CultureInfo.InvariantCulture)%"
+                               style="width:@row.Share.ToString("0.##", CultureInfo.InvariantCulture)%;background:var(--chart-@((i % 6) + 1))"></u>
+                        }
+                    </div>
+                    <ul>
+                        @for (var i = 0; i < card.Rows.Count; i++)
+                        {
+                            var row = card.Rows[i];
+                            <li>
+                                <i style="background:var(--chart-@((i % 6) + 1))"></i>
+                                <span>@row.Label @if (row.Note is not null) { <small>(@row.Note)</small> }</span>
+                                <b>@row.Amount.ToString("N2", CultureInfo.CurrentCulture)</b>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    #region Parameters
+
+    /// <summary>The records to summarise (inactive ones are ignored).</summary>
+    [Parameter] public IEnumerable<CollectionModel> Rows { get; set; } = [];
+
+    /// <summary>Looks up the display name of a collection type.</summary>
+    [Parameter, EditorRequired] public Func<Guid?, string> CollectionTypeName { get; set; } = _ => "—";
+
+    /// <summary>Looks up the display name of a payment type.</summary>
+    [Parameter, EditorRequired] public Func<Guid?, string> PaymentTypeName { get; set; } = _ => "—";
+
+    /// <summary>The user's local currency code shown beside the total.</summary>
+    [Parameter] public string LocalCurrency { get; set; } = "";
+
+    /// <summary>Short text after the record count, e.g. "1st collection · Oct 26, 2026".</summary>
+    [Parameter] public string? Caption { get; set; }
+
+    #endregion
+
+    #region Model
+
+    private sealed record SummaryRow(string Label, decimal Amount, decimal Share, string? Note);
+    private sealed record SummaryCard(string Title, List<SummaryRow> Rows);
+
+    private decimal __total;
+    private int __count;
+    private List<SummaryCard> __cards = [];
+
+    #endregion
+
+    #region Calculation
+
+    protected override void OnParametersSet()
+    {
+        var active = (Rows ?? []).Where(r => r.fblnActive).ToList();
+        __count = active.Count;
+        __total = active.Sum(r => r.fcurLocalAmount);
+
+        __cards =
+        [
+            new("Collection type", Group(active, r => CollectionTypeName(r.flngCollectionTypeKey), null)),
+            new("Currency", Group(active, r => r.fstrCurrencyKey ?? "—", CurrencyNote)),
+            new("Payment type", Group(active, r => PaymentTypeName(r.flngPaymentTypeKey), null))
+        ];
+    }
+
+    /// <summary>Sums the local amount per key, biggest first, with each row's share of the total.</summary>
+    private List<SummaryRow> Group(List<CollectionModel> rows, Func<CollectionModel, string> key,
+                                   Func<List<CollectionModel>, string?>? note) =>
+        rows.GroupBy(key)
+            .Select(g => (g.Key, Sum: g.Sum(r => r.fcurLocalAmount), Items: g.ToList()))
+            .OrderByDescending(g => g.Sum)
+            .Select(g => new SummaryRow(g.Key, g.Sum,
+                                        __total > 0 ? Math.Round(g.Sum / __total * 100m, 2) : 0m,
+                                        note?.Invoke(g.Items)))
+            .ToList();
+
+    /// <summary>The exchange rate used for a foreign currency (local ÷ original), when it is the same on every row.</summary>
+    private string? CurrencyNote(List<CollectionModel> items)
+    {
+        var rates = items.Where(i => i.fcurAmount > 0)
+                         .Select(i => Math.Round(i.fcurLocalAmount / i.fcurAmount, 2))
+                         .Distinct().ToList();
+        return rates.Count == 1 && rates[0] != 1m ? $"×{rates[0].ToString("0.##", CultureInfo.InvariantCulture)}" : null;
+    }
+
+    #endregion
+}

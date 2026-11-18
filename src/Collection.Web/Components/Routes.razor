@@ -1,0 +1,35 @@
+@* Routes – maps URLs to pages and decides what to show when access is refused. *@
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+                <NotAuthorized Context="authState">
+                    @if (authState.User.Identity?.IsAuthenticated == true)
+                    {
+                        @* Signed in, but the role lacks the permission for this page. *@
+                        <NotAuthenticated />
+                    }
+                    else
+                    {
+                        @* Not signed in (or the session ended): go back to the portal home. *@
+                        <RedirectToLogin />
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+
+        <NotFound>
+            <PageTitle>Page not found</PageTitle>
+            <LayoutView Layout="@typeof(Layout.MainLayout)">
+                <div class="nf-card">
+                    <div class="nf-code">404</div>
+                    <h1 class="nf-title">We can't find that page</h1>
+                    <p class="nf-text">The address may be mistyped, or the page may have moved.</p>
+                    <a class="btn btn-primary" href="/3F8YPFZN">Back to dashboard</a>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

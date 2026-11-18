@@ -1,0 +1,97 @@
+/* Hero – landing shell (theme aware): translucent top bar over a blue banner. */
+
+.hero-page { min-height: 100vh; color: var(--text); background: var(--bg); }
+
+/* ---------- banner ---------- */
+.hero-banner {
+    position: relative;
+    height: 408px;
+    overflow: hidden;
+    color: #fff;
+    background: linear-gradient(180deg, var(--hero-a) 0%, var(--hero-b) 55%, var(--hero-c) 100%);
+}
+    /* Sign-in pages: the blue banner reaches halfway down the card (card is ~556px tall) */
+    .hero-banner.is-compact { height: 424px; }
+
+    /* soft diagonal highlight on the left, like the reference */
+    .hero-banner::before {
+        content: "";
+        position: absolute;
+        left: 0; top: 0;
+        width: 34%; height: 100%;
+        background: linear-gradient(160deg, rgba(150, 160, 150, .5), rgba(120, 135, 140, .22));
+        clip-path: polygon(0 0, 100% 0, 0 100%);
+        pointer-events: none;
+    }
+    .hero-banner::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .025) 0 2px, transparent 2px 6px);
+        pointer-events: none;
+    }
+
+/* ---------- top bar ---------- */
+.hero-bar {
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 2;
+    background: rgba(255, 255, 255, .12);
+    border-bottom: 1px solid rgba(255, 255, 255, .22);
+    backdrop-filter: blur(6px);
+}
+
+.hero-bar__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1280px;
+    height: 56px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+.hero-brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 17px; color: #fff; }
+
+.hero-brand__mark { display: grid; place-items: center; color: #cfe3ff; }
+
+.hero-bar__actions { display: flex; align-items: center; gap: 16px; }
+.hero-user { font-size: 13.5px; color: #fff; }
+
+/* the theme button sits on the blue bar: white outline circle */
+.hero-bar__actions ::deep .tt-button {
+    width: 38px;
+    height: 38px;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .6);
+    border-radius: 50%;
+}
+    .hero-bar__actions ::deep .tt-button:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+
+/* ---------- title ---------- */
+.hero-title-block {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 56px 24px 0;
+    text-align: center;
+}
+
+.hero-title {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(26px, 4vw, 34px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+
+.hero-subtitle { margin: 10px 0 0; font-size: 16px; opacity: .95; }
+
+/* ---------- body ---------- */
+.hero-body { position: relative; z-index: 1; }
+    .hero-body.is-overlap { margin-top: -334px; }

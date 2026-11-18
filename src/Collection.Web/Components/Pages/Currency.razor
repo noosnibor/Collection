@@ -1,0 +1,332 @@
+@page "/CURFC42S"
+
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ILocationRepository LocationRepository
+@inject ICurrencyRepository CurrencyRepository
+@inject UserSessionService UserSession
+@inject ILogService<Currency> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "Currency.View")]
+
+
+<Spinner IsVisible="@__isSubmittingCurrency" Message="Saving Record" />
+
+<!-- Banner -->
+<Banner Title="Currency Management"
+        Subtitle="Organize, track, and manage all currencies in the system"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <EditForm Model="__currencyParameter" OnValidSubmit="OnValidCurrencySubmit">
+                    <DataAnnotationsValidator />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Currency Key</label>
+                                <InputText class="input" @bind-Value="__currencyParameter.fstrCurrency" MaxLength="3" />
+                                <ValidationMessage For="@(() => __currencyParameter.fstrCurrency)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Currency Description</label>
+                                <InputText class="input" @bind-Value="__currencyParameter.fstrCurrencyType" />
+                                <ValidationMessage For="@(() => __currencyParameter.fstrCurrencyType)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-1 label">Rate</label>
+                                <InputNumber class="input" @bind-Value="__currencyParameter.fcurAmount" />
+                                <ValidationMessage For="@(() => __currencyParameter.fcurAmount)" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="fw-semibold mb-2 label">Location</label>
+                                <InputSelect class="@($"select {(__currencyParameter.fstrLocation == null ? "placeholder-shown" : "")}")" @bind-Value="__currencyParameter.fstrLocation">
+                                    <option value=""></option>
+                                    @foreach (var req in __locationCurrencyModel)
+                                    {
+                                        <option value="@req.fstrLocation">@req.fstrDescription</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => __currencyParameter.fstrLocation)" />
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-6">
+                                    <label class="fw-semibold mb-1 label">Effective Start</label>
+                                    <InputDate @bind-Value="__currencyParameter.fdtmEffectiveFrom"
+                                               max="@LocalTime.Today.ToString("yyyy-MM-dd")"
+                                               class="date" />
+                                    <ValidationMessage For="@(() => __currencyParameter.fdtmEffectiveFrom)" />
+                                </div>
+
+                                <div class="col-6">
+                                    <label class="fw-semibold mb-1 label">Effective End</label>
+                                    <InputDate @bind-Value="__currencyParameter.fdtmEffectiveTo"
+                                               class="date" />
+                                    <ValidationMessage For="@(() => __currencyParameter.fdtmEffectiveTo)" />
+                                </div>
+                            </div>
+
+                            <div class="checkbox d-flex align-items-center gap-2 mb-4">
+                                <input class="formcheckinput" type="checkbox" @bind="__currencyParameter.fblnActive">
+                                <label class="formchecklabel mb-0 label">Activate</label>
+                            </div>
+
+                            <!-- Buttons -->
+                            @if (__isUpdatingCurrency)
+                            {
+                                <AuthorizeView Policy="Currency.Update" Context="Collection">
+                                    <Authorized>
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-warning text-white" type="submit">Update Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetCurrencyProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            }
+                            else
+                            {
+                                <AuthorizeView Policy="Currency.Add" Context="Collection">
+                                    <Authorized>
+
+                                        <div class="row mt-auto">
+                                            <div class="d-flex justify-content-between align-items-center">
+
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-success" type="submit">Save Record</button>
+                                                    <button class="btn btn-secondary border-0" type="button" @onclick="ResetCurrencyProperties">
+                                                        Discard Record
+                                                    </button>
+                                                </div>
+                                                <div></div>
+                                            </div>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+
+                            }
+
+
+
+                        </div>
+
+                        <div class="col-md-6">
+                            <InfoCard Model="@__currencyParameter"
+                                      Title="Review Currency"
+                                      Subtitle="Ensure that the data entered is correct before submitting"
+                                      Img="/img/currency.png" />
+
+                        </div>
+                    </div>
+
+                </EditForm>
+
+
+
+
+                <div class="mt-5">
+                    <Table TItem="CurrencyModel"
+                           Items="__currencyModel"
+                           OnRowClick="SelectedCurrency"
+                           SearchFilter="SearchCurrency"
+                           Title="Currency"
+                           AllowFiltering="true"
+                           HeaderBackgroundColor="@Theme.TableHeaderColor"
+                           ColumnSpan="7"
+                           IsInactive="@( u => !u.fblnActive)">
+
+                        <HeaderTemplate>
+                            <th>Currency Code</th>
+                            <th>Currency Description</th>
+                            <th>Location</th>
+                            <th>Rate</th>
+                            <th>Status</th>
+                            <th>Effective From</th>
+                            <th>Effective To</th>
+                        </HeaderTemplate>
+
+                        <RowTemplate Context="currency">
+                            <td>@currency.fstrCurrency</td>
+                            <td>@currency.fstrCurrencyType</td>
+                            <td>@currency.fstrLocation</td>
+                            <td>@currency.fcurAmount.ToString("N4")</td>
+                            <td>
+                                <span class="badge @(currency.fblnActive ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                    @(currency.fblnActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                @currency.fdtmEffectiveFrom.ToString("MMM dd, yyyy")
+                            </td>
+                            <td class="text-muted">
+                                @currency.fdtmEffectiveTo.ToString("MMM dd, yyyy")
+                            </td>
+                        </RowTemplate>
+
+                    </Table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The form model bound to the add / edit form.</summary>
+    private CurrencyDataTransferObject __currencyParameter = new();
+
+    private IEnumerable<CurrencyModel> __currencyModel = [];
+    private IEnumerable<LocationModel> __locationModel = [];
+
+    /// <summary>Active locations only – these fill the "Location" drop-down.</summary>
+    private IEnumerable<LocationModel> __locationCurrencyModel = [];
+
+    private bool __isUpdatingCurrency;
+    private bool __isSubmittingCurrency;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __currencyParameter = NewCurrency();
+        await LoadAllDataAsync();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>Loads locations and currencies from the database.</summary>
+    private async Task LoadAllDataAsync()
+    {
+        try
+        {
+            __locationModel = await LocationRepository.SelectLocation();
+            __currencyModel = await CurrencyRepository.SelectCurrency();
+            __locationCurrencyModel = __locationModel.Where(x => x.fblnActive).ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load currencies", ex);
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>A blank form model stamped with the signed-in user.</summary>
+    private CurrencyDataTransferObject NewCurrency() => new() { fstrWho = UserSession.Username };
+
+    /// <summary>Clears the form and reloads the lists.</summary>
+    private async Task ResetCurrencyProperties()
+    {
+        __currencyParameter = NewCurrency();
+        __isSubmittingCurrency = false;
+        __isUpdatingCurrency = false;
+
+        await LoadAllDataAsync();
+    }
+
+    /// <summary>Loads a table row into the form for editing.</summary>
+    private void SelectedCurrency(CurrencyModel currency)
+    {
+        __isUpdatingCurrency = true;
+        __currencyParameter = new()
+        {
+            flngKey = currency.flngKey,
+            fstrCurrency = currency.fstrCurrency,
+            fstrCurrencyType = currency.fstrCurrencyType,
+            fstrLocation = currency.fstrLocation,
+            fcurAmount = currency.fcurAmount,
+            fblnActive = currency.fblnActive,
+            fstrWho = currency.fstrWho,
+            fdtmEffectiveFrom = currency.fdtmEffectiveFrom,
+            fdtmEffectiveTo = currency.fdtmEffectiveTo
+        };
+    }
+
+    /// <summary>Saves the currency (insert or update) and shows the result.</summary>
+    private async Task OnValidCurrencySubmit()
+    {
+        if (__isSubmittingCurrency) return;   // protects against a double click
+
+        __isSubmittingCurrency = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (string.IsNullOrEmpty(__currencyParameter.fstrLocation))
+            {
+                ToastService.ShowWarning("Please select a location");
+                return;
+            }
+
+            var message = await CurrencyRepository.AddOrUpdateCurrency(__currencyParameter, insert: !__isUpdatingCurrency);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetCurrencyProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the currency", ex);
+        }
+        finally
+        {
+            __isSubmittingCurrency = false;
+        }
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Text filter for the currency table (null-safe).</summary>
+    private bool SearchCurrency(CurrencyModel currency, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(currency.fstrCurrency) || Has(currency.fstrCurrencyType) || Has(currency.fstrLocation);
+    }
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

@@ -1,0 +1,64 @@
+﻿@* SubTab.razor - Registers a sub-tab with the parent Tab *@
+
+@code {
+    [CascadingParameter] public Tab? Parent { get; set; }
+
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>False removes the sub-tab from the nav entirely.</summary>
+    [Parameter] public bool Visible { get; set; } = true;
+
+    /// <summary>True keeps the sub-tab visible but greyed out and unclickable.</summary>
+    [Parameter] public bool Disabled { get; set; } = false;
+
+    /// <summary>Optional tooltip explaining why the sub-tab is disabled.</summary>
+    [Parameter] public string DisabledReason { get; set; } = "";
+
+    [Parameter] public Func<int?>? Badge { get; set; }
+    [Parameter] public RenderFragment? Content { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private Tabs.SubTabItem? _item;
+
+    protected override void OnInitialized()
+    {
+        if (Parent == null) return;
+
+        _item = new Tabs.SubTabItem
+        {
+            Id = Id,
+            Label = Label,
+            Icon = Icon,
+            Visible = Visible,
+            Disabled = Disabled,
+            DisabledReason = DisabledReason,
+            Badge = Badge,
+            Content = Content ?? ChildContent
+        };
+
+        Parent.RegisterSubTab(_item);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_item == null) return;
+
+        var changed = _item.Visible != Visible
+                   || _item.Disabled != Disabled
+                   || _item.DisabledReason != DisabledReason
+                   || _item.Label != Label
+                   || _item.Icon != Icon;
+
+        _item.Visible = Visible;
+        _item.Disabled = Disabled;
+        _item.DisabledReason = DisabledReason;
+        _item.Label = Label;
+        _item.Icon = Icon;
+        _item.Badge = Badge;
+        _item.Content = Content ?? ChildContent;
+
+        if (changed) Parent?.NotifyParent();
+    }
+}

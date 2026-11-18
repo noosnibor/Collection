@@ -1,0 +1,126 @@
+﻿@* Tab.razor - Registers a top-level tab with the parent Tabs container *@
+<CascadingValue Value="this">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [CascadingParameter] public Tabs? Parent { get; set; }
+
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string SubTitle { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>False removes the tab from the nav entirely.</summary>
+    [Parameter] public bool Visible { get; set; } = true;
+
+    /// <summary>True keeps the tab in the nav but greys it out and blocks clicks.</summary>
+    [Parameter] public bool Disabled { get; set; } = false;
+
+    /// <summary>Optional tooltip explaining why the tab is disabled.</summary>
+    [Parameter] public string DisabledReason { get; set; } = "";
+
+    [Parameter] public Func<int?>? Badge { get; set; }
+    [Parameter] public RenderFragment? Content { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Fired whenever the active sub-tab on this tab changes.</summary>
+    [Parameter] public EventCallback<string> OnSubTabChanged { get; set; }
+
+    /// <summary>Default sub-tab to activate when this tab first renders.
+    /// If empty, the first registered sub-tab is used.</summary>
+    [Parameter] public string InitialSubTab { get; set; } = "";
+
+    /// <summary>Two-way bindable active sub-tab id. Bind with @bind-ActiveSubTab.</summary>
+    [Parameter] public string ActiveSubTab { get; set; } = "";
+    [Parameter] public EventCallback<string> ActiveSubTabChanged { get; set; }
+
+    internal Tabs.TabItem? RegisteredItem { get; private set; }
+
+    // Tracks the sub-tab value we ourselves last emitted, so OnParametersSet
+    // can ignore the parameter "echo" that follows an internal click and avoid
+    // reverting the user's selection.
+    private string _lastEmittedSubTab = "";
+
+    protected override void OnInitialized()
+    {
+        if (Parent == null) return;
+
+        var initial = !string.IsNullOrEmpty(ActiveSubTab) ? ActiveSubTab : InitialSubTab;
+        _lastEmittedSubTab = initial;
+
+        RegisteredItem = new Tabs.TabItem
+        {
+            Id = Id,
+            Label = Label,
+            SubTitle = SubTitle,
+            Icon = Icon,
+            Visible = Visible,
+            Disabled = Disabled,
+            DisabledReason = DisabledReason,
+            Badge = Badge,
+            Content = Content,
+            ActiveSubTabId = initial,
+            OnSubTabChanged = async id =>
+            {
+                _lastEmittedSubTab = id;          // remember what we pushed out
+                ActiveSubTab = id;
+                await ActiveSubTabChanged.InvokeAsync(id);
+                await OnSubTabChanged.InvokeAsync(id);
+            }
+        };
+
+        Parent.RegisterTab(RegisteredItem);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // ---- Push parameter changes into the registered item -------------------
+        // Without this, Visible / Disabled would be frozen at their first-render
+        // values, because RegisterTab copies them only once.
+        if (RegisteredItem != null)
+        {
+            var changed = RegisteredItem.Visible != Visible
+                       || RegisteredItem.Disabled != Disabled
+                       || RegisteredItem.DisabledReason != DisabledReason
+                       || RegisteredItem.Label != Label
+                       || RegisteredItem.SubTitle != SubTitle
+                       || RegisteredItem.Icon != Icon;
+
+            RegisteredItem.Visible = Visible;
+            RegisteredItem.Disabled = Disabled;
+            RegisteredItem.DisabledReason = DisabledReason;
+            RegisteredItem.Label = Label;
+            RegisteredItem.SubTitle = SubTitle;
+            RegisteredItem.Icon = Icon;
+            RegisteredItem.Badge = Badge;
+            RegisteredItem.Content = Content;
+
+            if (changed) Parent?.SyncState();
+        }
+
+        // ---- Sub-tab two-way binding -------------------------------------------
+        // React only to a *genuine* external change: the incoming value must differ
+        // from the last value we emitted ourselves AND from the registered state.
+        // This prevents the click -> bind -> OnParametersSet loop from snapping the
+        // sub-tab back to its previous value.
+        if (RegisteredItem != null
+            && !string.IsNullOrEmpty(ActiveSubTab)
+            && ActiveSubTab != _lastEmittedSubTab
+            && RegisteredItem.ActiveSubTabId != ActiveSubTab
+            && RegisteredItem.SubTabs.Any(s => s.Id == ActiveSubTab)
+            && Parent != null)
+        {
+            _lastEmittedSubTab = ActiveSubTab;
+            Parent.SetActiveSubTab(Id, ActiveSubTab);
+        }
+    }
+
+    internal void RegisterSubTab(Tabs.SubTabItem sub)
+    {
+        Parent?.RegisterSubTab(Id, sub);
+    }
+
+    /// <summary>Lets a child SubTab ask the container to re-evaluate state.</summary>
+    internal void NotifyParent() => Parent?.SyncState();
+}

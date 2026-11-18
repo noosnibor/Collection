@@ -1,0 +1,63 @@
+/* Banner – page header card (theme aware) */
+
+.page-banner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 20px 24px 20px 28px;
+    overflow: hidden;
+    color: var(--text);
+    background: linear-gradient(90deg, var(--accent-soft), transparent 60%),
+        var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
+}
+
+    /* The signature accent bar on the left edge */
+    .page-banner::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 16px;
+        bottom: 16px;
+        width: 4px;
+        border-radius: 0 4px 4px 0;
+        background: var(--accent);
+    }
+
+.page-banner__content { min-width: 0; }
+
+.page-banner__eyebrow {
+    display: inline-block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.page-banner__title {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.25;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.page-banner__subtitle {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--text-3);
+}
+
+.page-banner__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 599.98px) {
+    .page-banner { padding: 16px 16px 16px 20px; }
+    .page-banner__title { font-size: 20px; }
+}

@@ -1,0 +1,10 @@
+.error-page {
+    max-width: 520px;
+    margin: 12vh auto;
+    padding: 2rem;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
+    color: var(--text);
+}

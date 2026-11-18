@@ -1,0 +1,623 @@
+@typeparam TItem
+
+<div class="modern-table-card">
+
+    @if (!string.IsNullOrWhiteSpace(Title))
+    {
+        <div class="mtc-header">
+            <h2 class="mtc-title">@Title</h2>
+            @* @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p class="mtc-subtitle">@Subtitle</p>
+            } *@
+        </div>
+    }
+
+    <!-- Toolbar -->
+    <div class="mtc-toolbar">
+
+        @if (ShowSearchBox)
+        {
+            <div class="mtc-search-wrap">
+
+                <svg class="mtc-search-icon"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+
+                <input type="text"
+                       class="mtc-search-input"
+                       placeholder="@SearchPlaceholder"
+                       @bind="SearchText"
+                       @bind:event="oninput"
+                       @onkeydown="HandleSearchKeyDown" />
+
+                @if (!string.IsNullOrWhiteSpace(SearchText))
+                {
+                    <button type="button"
+                            class="mtc-search-clear"
+                            @onclick="ClearSearch">
+
+                        <svg viewBox="0 0 24 24"
+                             fill="none"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             width="14"
+                             height="14">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+
+                    </button>
+                }
+
+            </div>
+        }
+
+        <div class="mtc-toolbar-meta">
+            <span class="mtc-result-pill">
+                <span class="mtc-result-dot"></span>
+                @FilteredCount @(FilteredCount == 1 ? "record" : "records")
+            </span>
+        </div>
+
+        @if (SelectedRowCount > 0)
+        {
+            <div class="mtc-toolbar-meta">
+                <span class="mtc-result-pill">
+                    <span class="mtc-result-dot"></span>
+                    @SelectedRowCount @(SelectedRowCount == 1 ? "item selected" : "items selected")
+                </span>
+            </div>
+        }
+
+    </div>
+
+    <!-- Table -->
+    <div class="mtc-table-wrapper">
+
+        <table class="mtc-table">
+
+            <thead style="--header-bg:@HeaderBackgroundColor; --header-text:@HeaderTextColor;">
+                <tr>
+
+                    @if (ShowCheckBox)
+                    {
+                        <th style="width:40px;">
+
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   checked="@SelectAllChecked"
+                                   @onchange="HandleSelectAllRows"
+                                   @onclick:stopPropagation="true" />
+
+                        </th>
+                    }
+
+                    @HeaderTemplate
+
+                    @if (ShowRowActions)
+                    {
+                        <th class="text-end"></th>
+                    }
+
+                </tr>
+            </thead>
+
+            <tbody>
+
+                @if (IsLoading)
+                {
+                    <tr class="mtc-state-row">
+                        <td colspan="@ColumnSpan">
+
+                            <div class="mtc-empty-state">
+                                <div class="mtc-loading-spinner"></div>
+                                <p class="mtc-empty-title">Loading records</p>
+                                <p class="mtc-empty-sub">Please wait...</p>
+                            </div>
+
+                        </td>
+                    </tr>
+                }
+                else if (!PagedItems.Any())
+                {
+                    <tr class="mtc-state-row">
+                        <td colspan="@ColumnSpan">
+
+                            <div class="mtc-empty-state">
+
+                                <div class="mtc-empty-icon">
+
+                                    <svg viewBox="0 0 24 24"
+                                         fill="none"
+                                         stroke="currentColor"
+                                         stroke-width="1.5"
+                                         width="32"
+                                         height="32">
+
+                                        <circle cx="11" cy="11" r="8" />
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                        <line x1="8" y1="11" x2="14" y2="11" />
+
+                                    </svg>
+
+                                </div>
+
+                                <p class="mtc-empty-title">
+                                    No records found
+                                </p>
+
+                                <p class="mtc-empty-sub">
+                                    @(string.IsNullOrWhiteSpace(SearchText)
+                                                                    ? "No data available"
+                                                                    : $"No matches for \"{SearchText}\"")
+                            </p>
+
+                            </div>
+
+                        </td>
+                    </tr>
+                                }
+                else
+                {
+                    @foreach (var item in PagedItems)
+                    {
+                        var selected = SelectedRows.Contains(item);
+
+                        <tr class="mtc-row @GetRowClass(item)"
+                            @onclick="() => HandleRowClick(item)">
+
+                            @if (ShowCheckBox)
+                            {
+                                <td>
+
+                                    <input type="checkbox"
+                                           class="modern"
+                                           checked="@selected"
+                                           @onchange="(e) => HandleRowSelectionChanged(item, e.Value)"
+                                           @onclick:stopPropagation="true" />
+
+                                </td>
+                            }
+
+                            @RowTemplate?.Invoke(item)
+
+                            @if (ShowRowActions)
+                            {
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-primary"
+                                            title="View"
+                                            @onclick="() => HandleViewButtonClicked(item)"
+                                            @onclick:stopPropagation="true">
+                                        @ShowRowActiionLabel
+                                    </button>
+                                </td>
+                            }
+
+                        </tr>
+                    }
+                }
+
+            </tbody>
+
+            @if (ShowFooterTotalSum)
+            {
+                <tfoot>
+
+                    <tr class="mtc-footer-row">
+
+                        @for (int i = 0; i < ColumnSpan; i++)
+                        {
+                            if (i == 0)
+                            {
+                                <td>
+                                    <span class="mtc-sum-label">
+                                        @SumLabel
+                                    </span>
+                                </td>
+                            }
+                            else if (i == SumColumnIndex)
+                            {
+                                <td>
+                                    <span class="mtc-sum-value">
+                                        @(string.IsNullOrEmpty(SumPrefix) ? "" : SumPrefix + " ")@ColumnSum.ToString("N2")
+                                    </span>
+                                </td>
+                            }
+                            else
+                            {
+                                <td></td>
+                            }
+                        }
+
+                    </tr>
+
+                </tfoot>
+            }
+
+           @*  @if (ShowFooterTotalCount)
+            {
+                <tfoot>
+
+                    <tr class="mtc-footer-row">
+
+                        @for (int i = 0; i < ColumnSpan; i++)
+                        {
+                            if (i == 0)
+                            {
+                                <td>
+                                    <span class="mtc-sum-label">
+                                        @SumLabel
+                                    </span>
+                                </td>
+                            }
+                            else if (i == SumColumnIndex)
+                            {
+                                <td>
+                                    <span class="mtc-sum-value">
+                                        @FilteredCount records
+                                    </span>
+                                </td>
+                            }
+                            else
+                            {
+                                <td></td>
+                            }
+                        }
+
+                    </tr>
+
+                </tfoot>
+            } *@
+
+        </table>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="mtc-footer">
+
+        <div class="mtc-footer-info">
+            Showing
+            <strong>@PagedItems.Count</strong>
+            of
+            <strong>@FilteredCount</strong>
+        </div>
+
+        <div class="mtc-page-size">
+
+            <label class="mtc-page-size-label">
+                Rows per page
+            </label>
+
+            <select class="mtc-select"
+                    @bind="PageSize">
+
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+
+
+            </select>
+            @* option value="@FilteredCount">All</option> *@
+        </div>
+
+        <div class="mtc-pagination">
+
+            <button type="button"
+                    class="mtc-page-btn"
+                    disabled="@(CurrentPage <= 1)"
+                    @onclick="FirstPage">
+
+                «
+
+            </button>
+
+            <button type="button"
+                    class="mtc-page-btn"
+                    disabled="@(CurrentPage <= 1)"
+                    @onclick="PrevPage">
+
+                ‹
+
+            </button>
+
+            <div class="mtc-page-info">
+
+                <span class="mtc-page-current">
+                    @CurrentPage
+                </span>
+
+                <span class="mtc-page-divider">
+                    /
+                </span>
+
+                <span class="mtc-page-total">
+                    @TotalPages
+                </span>
+
+            </div>
+
+            <button type="button"
+                    class="mtc-page-btn"
+                    disabled="@(CurrentPage >= TotalPages)"
+                    @onclick="NextPage">
+
+                ›
+
+            </button>
+
+            <button type="button"
+                    class="mtc-page-btn"
+                    disabled="@(CurrentPage >= TotalPages)"
+                    @onclick="LastPage">
+
+                »
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+@code {
+
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+
+    [Parameter] public RenderFragment? HeaderTemplate { get; set; }
+
+    [Parameter] public RenderFragment<TItem>? RowTemplate { get; set; }
+
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+    [Parameter] public EventCallback<TItem> OnViewClick { get; set; }
+
+    [Parameter] public string? Title { get; set; }
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    [Parameter] public EventCallback<IReadOnlyList<TItem>> OnSelectionChanged { get; set; }
+
+    [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
+
+    [Parameter] public EventCallback<string> OnSearchTriggeredEntered { get; set; }
+
+    [Parameter] public Func<TItem, string, bool>? SearchFilter { get; set; }
+
+    [Parameter] public Func<TItem, bool>? IsInactive { get; set; }
+
+    [Parameter] public Func<TItem, decimal>? SumSelector { get; set; }
+    [Parameter] public Func<TItem, int>? CountSelector { get; set; }
+
+    [Parameter] public Action<TItem, bool>? SetRowSelected { get; set; }
+
+    [Parameter] public bool ShowSearchBox { get; set; } = true;
+
+    [Parameter] public bool ShowRowActions { get; set; } = false;
+
+    [Parameter] public bool ShowCheckBox { get; set; }
+
+    [Parameter] public bool AllowFiltering { get; set; } = true;
+
+    [Parameter] public bool IsLoading { get; set; } = false;
+
+    [Parameter] public int ColumnSpan { get; set; }
+
+    [Parameter] public int PageSize { get; set; } = 10;
+
+    [Parameter] public int? SumColumnIndex { get; set; }
+
+    /// <summary>Currency code shown before the total (e.g. "JMD"). Culture-independent, unlike the "C2" format whose symbol depends on the server culture.</summary>
+    [Parameter] public string? SumPrefix { get; set; }
+
+    [Parameter] public string SumLabel { get; set; } = "Total";
+
+    [Parameter] public string ShowRowActiionLabel { get; set; } = "Action";
+
+    [Parameter] public string SearchPlaceholder { get; set; } = "";
+
+    [Parameter] public string HeaderBackgroundColor { get; set; } = "var(--table-head-bg)";
+
+    [Parameter] public string HeaderTextColor { get; set; } = "var(--text-2)";
+
+    private readonly HashSet<TItem> SelectedRows = new();
+
+    private List<TItem> FilteredItems = new();
+
+    private int CurrentPage = 1;
+
+    private string _searchText = string.Empty;
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText == value)
+                return;
+
+            _searchText = value;
+
+            CurrentPage = 1;
+
+            ApplyFiltering();
+
+            _ = SearchTextChanged.InvokeAsync(value);
+        }
+    }
+
+    private int FilteredCount => FilteredItems.Count;
+
+    private bool ShowFooterTotalSum =>
+        SumSelector != null &&
+        SumColumnIndex.HasValue &&
+        FilteredItems.Any();
+
+    private bool ShowFooterTotalCount =>
+        SumSelector != null &&
+        SumColumnIndex.HasValue &&
+        FilteredItems.Any();
+
+    private decimal ColumnSum =>
+        SumSelector == null
+            ? 0
+            : FilteredItems.Sum(SumSelector);
+
+    private List<TItem> PagedItems =>
+        PageSize <= 0
+            ? FilteredItems
+            : FilteredItems
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+    private int TotalPages =>
+        Math.Max(1,
+            (int)Math.Ceiling(
+                FilteredCount / (double)Math.Max(PageSize, 1)));
+
+    private int SelectedRowCount => SelectedRows.Count;
+
+    private bool SelectAllChecked =>
+        FilteredItems.Any() &&
+        FilteredItems.All(x => SelectedRows.Contains(x));
+
+    protected override void OnParametersSet()
+    {
+        ApplyFiltering();
+        CleanupSelections();
+    }
+
+    private void ApplyFiltering()
+    {
+        IEnumerable<TItem> query = Items ?? Enumerable.Empty<TItem>();
+
+        if (AllowFiltering &&
+            !string.IsNullOrWhiteSpace(SearchText) &&
+            SearchFilter != null)
+        {
+            query = query.Where(x => SearchFilter(x, SearchText));
+        }
+
+        FilteredItems = query.ToList();
+
+        if (CurrentPage > TotalPages)
+        {
+            CurrentPage = TotalPages;
+        }
+
+        StateHasChanged();
+    }
+
+    private void CleanupSelections()
+    {
+        SelectedRows.RemoveWhere(x => !FilteredItems.Contains(x));
+    }
+
+    private void ClearSearch()
+    {
+        SearchText = string.Empty;
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" &&
+            OnSearchTriggeredEntered.HasDelegate)
+        {
+            await OnSearchTriggeredEntered.InvokeAsync(SearchText);
+        }
+    }
+
+    private async Task HandleRowClick(TItem item)
+    {
+        if (OnRowClick.HasDelegate)
+        {
+            await OnRowClick.InvokeAsync(item);
+        }
+    }
+
+    private async Task HandleViewButtonClicked(TItem row)
+    {
+        if (OnViewClick.HasDelegate && ShowRowActions == true)
+        {
+            await OnViewClick.InvokeAsync(row);
+        }
+    }
+
+    private void NextPage()
+    {
+        if (CurrentPage < TotalPages)
+            CurrentPage++;
+    }
+
+    private void PrevPage()
+    {
+        if (CurrentPage > 1)
+            CurrentPage--;
+    }
+
+    private void FirstPage()
+    {
+        CurrentPage = 1;
+    }
+
+    private void LastPage()
+    {
+        CurrentPage = TotalPages;
+    }
+
+    private async Task HandleSelectAllRows(ChangeEventArgs e)
+    {
+        var isChecked = (bool)e.Value!;
+
+        foreach (var row in FilteredItems)
+        {
+            if (isChecked)
+                SelectedRows.Add(row);
+            else
+                SelectedRows.Remove(row);
+
+            SetRowSelected?.Invoke(row, isChecked);
+        }
+
+        await NotifySelectionChanged();
+    }
+
+    private async Task HandleRowSelectionChanged(TItem row, object? value)
+    {
+        var isChecked = (bool)value!;
+
+        if (isChecked)
+            SelectedRows.Add(row);
+        else
+            SelectedRows.Remove(row);
+
+        SetRowSelected?.Invoke(row, isChecked);
+
+        await NotifySelectionChanged();
+    }
+
+    private async Task NotifySelectionChanged()
+    {
+        if (OnSelectionChanged.HasDelegate)
+        {
+            await OnSelectionChanged.InvokeAsync(
+                SelectedRows.ToList());
+        }
+    }
+
+    private string GetRowClass(TItem item)
+    {
+        return IsInactive?.Invoke(item) == true
+            ? "inactive"
+            : string.Empty;
+    }
+}

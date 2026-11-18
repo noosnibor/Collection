@@ -1,0 +1,594 @@
+/* ==========================================================================
+   WAFIF Collection Management System – global styles
+   Windows 11 / Fluent inspired design with a light and a dark theme.
+
+   Sections
+     1. Design tokens (light + dark)
+     2. Base elements
+     3. Bootstrap variable mapping (so Bootstrap follows the theme)
+     4. Form controls  (.input / .date / .select / switch / label / validation)
+     5. Buttons
+     6. Cards, tables and misc. Bootstrap overrides
+     7. Utilities, scrollbars and Blazor error UI
+   The active theme is the `data-theme` attribute on <html> (set by /js/theme.js).
+   ========================================================================== */
+
+/*#region 1. Design tokens */
+
+:root,
+:root[data-theme="light"] {
+    color-scheme: light;
+
+    /* Surfaces */
+    --bg: #f3f3f3;                 /* app background (Mica)            */
+    --surface: #ffffff;            /* cards / panels                   */
+    --surface-2: #f9f9f9;          /* subtle layer inside a card       */
+    --surface-3: #f0f0f0;          /* hover / pressed layer            */
+    --surface-input: #ffffff;
+    --overlay: rgba(255, 255, 255, 0.72);
+
+    /* Strokes */
+    --border: #d6d6d6;
+    --border-strong: #b3b3b3;
+    --input-border: #b8b8b8;
+    --input-border-bottom: #b8b8b8;
+
+    /* Text */
+    --text: #000000;
+    --text-2: #1f1f1f;
+    --text-3: #404040;
+    --text-disabled: #9e9e9e;
+    --placeholder: #6e6e6e;
+
+    /* Accent (Windows 11 blue) */
+    --accent: #0b78e3;
+    --accent-hover: #0966c2;
+    --accent-pressed: #0a56a3;
+    --accent-soft: #e1efff;
+    --accent-soft-border: #99caff;
+    --accent-2: #5558e8;
+    --on-accent: #ffffff;
+    --focus-ring: rgba(11, 120, 227, 0.35);
+
+    /* Status */
+    --success: #0a8a0a;  --success-soft: #d4f7d0;
+    --warning: #9d5d00;  --warning-soft: #fff4ce;  --warning-solid: #f7b500;
+    --danger: #e0200f;   --danger-soft: #ffe3e5;
+    --info: #0b78e3;     --info-soft: #e1efff;
+
+    /* Elevation */
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02);
+    --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.14);
+
+    /* Shell */
+    --sidebar-bg: #f3f3f3;
+    --sidebar-text: #1b1b1b;
+    --sidebar-muted: #616161;
+    --sidebar-hover: rgba(0, 0, 0, 0.045);
+    --sidebar-active: rgba(11, 120, 227, 0.1);
+    --topbar-bg: rgba(243, 243, 243, 0.82);
+
+    /* Tables */
+    --chart-1: #0b78e3;  --chart-2: #ffb200;  --chart-3: #00a896;
+    --chart-4: #7a4fe0;  --chart-5: #e0219f;  --chart-6: #5c5c5c;
+    --hero-a: #2f86e0;  --hero-b: #0b62c4;  --hero-c: #084a99;
+    --table-head-bg: #f6f6f6;
+    --table-row-hover: #f5f9fd;
+    --table-stripe: #fbfbfb;
+
+    /* Shape & type */
+    --radius-sm: 6px;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, Arial, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #202020;
+    --surface: #2b2b2b;
+    --surface-2: #323232;
+    --surface-3: #3a3a3a;
+    --surface-input: #333333;
+    --overlay: rgba(32, 32, 32, 0.72);
+
+    --border: #4a4a4a;
+    --border-strong: #525252;
+    --input-border: #8c8c8c;
+    --input-border-bottom: #8c8c8c;
+
+    --text: #ffffff;
+    --text-2: #ececec;
+    --text-3: #c4c4c4;
+    --text-disabled: #6e6e6e;
+    --placeholder: #9a9a9a;
+
+    --accent: #38bdff;
+    --accent-hover: #5ccaff;
+    --accent-pressed: #22a9ee;
+    --accent-soft: rgba(96, 205, 255, 0.14);
+    --accent-soft-border: rgba(96, 205, 255, 0.35);
+    --accent-2: #9ea3ff;
+    --on-accent: #003349;
+    --focus-ring: rgba(96, 205, 255, 0.45);
+
+    --success: #5ee04e;  --success-soft: rgba(108, 203, 95, 0.16);
+    --warning: #fce100;  --warning-soft: rgba(252, 225, 0, 0.14);  --warning-solid: #fce100;
+    --danger: #ff7a88;   --danger-soft: rgba(255, 153, 164, 0.16);
+    --info: #60cdff;     --info-soft: rgba(96, 205, 255, 0.14);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.02);
+    --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-3: 0 8px 28px rgba(0, 0, 0, 0.55);
+
+    --sidebar-bg: #1c1c1c;
+    --sidebar-text: #ffffff;
+    --sidebar-muted: #a6a6a6;
+    --sidebar-hover: rgba(255, 255, 255, 0.06);
+    --sidebar-active: rgba(96, 205, 255, 0.14);
+    --topbar-bg: rgba(32, 32, 32, 0.82);
+
+    --chart-1: #38bdff;  --chart-2: #ffd23f;  --chart-3: #2de0c4;
+    --chart-4: #b8a4ff;  --chart-5: #ff8fe6;  --chart-6: #b5b5b5;
+    --hero-a: #1f5fa8;  --hero-b: #0f4585;  --hero-c: #0a3166;
+    --table-head-bg: #333333;
+    --table-row-hover: #353b40;
+    --table-stripe: #2f2f2f;
+}
+
+/*#endregion */
+
+/*#region 2. Base elements */
+
+html, body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 450;
+    letter-spacing: 0.005em;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--text);
+    font-weight: 600;
+}
+
+h1:focus { outline: none; }
+
+a, .btn-link {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+    a:hover, .btn-link:hover {
+        color: var(--accent-hover);
+        text-decoration: underline;
+    }
+
+::selection { background: var(--accent); color: var(--on-accent); }
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+hr { border-color: var(--border); opacity: 1; }
+
+.text-muted, .text-body-secondary { color: var(--text-3) !important; }
+
+.content { padding-top: 1.1rem; }
+
+/*#endregion */
+
+/*#region 3. Bootstrap variable mapping */
+
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+    --bs-body-bg: var(--bg);
+    --bs-body-color: var(--text);
+    --bs-body-font-family: var(--font);
+    --bs-secondary-color: var(--text-3);
+    --bs-tertiary-bg: var(--surface-2);
+    --bs-border-color: var(--border);
+    --bs-card-bg: var(--surface);
+    --bs-card-border-color: var(--border);
+    --bs-link-color: var(--accent);
+    --bs-link-hover-color: var(--accent-hover);
+    --bs-primary: var(--accent);
+    --bs-emphasis-color: var(--text);
+    --bs-heading-color: var(--text);
+}
+
+/*#endregion */
+
+/*#region 4. Form controls */
+
+/* Shared look for the three custom controls (text / date / select) */
+.input,
+.date,
+.select {
+    all: unset;
+    box-sizing: border-box;
+    width: 100%;
+    height: 34px;
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text);
+    background: var(--surface-input);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+    .input:hover,
+    .date:hover,
+    .select:hover {
+        background: var(--surface-2);
+    }
+
+    /* Focus: crisp full accent outline (no special bottom line) */
+    .input:focus,
+    .date:focus,
+    .select:focus {
+        outline: none;
+        background: var(--surface-input);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .input::placeholder { color: var(--placeholder); font-size: 14px; }
+
+    .input:disabled, .input.disabled,
+    .date:disabled, .date.disabled,
+    .select:disabled, .select.disabled {
+        background: var(--surface-3);
+        color: var(--text-disabled);
+        border-color: var(--border);
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+.date { cursor: text; }
+
+    .date::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+        opacity: 0.65;
+        padding: 2px;
+        margin-left: 6px;
+        width: 16px;
+        height: 16px;
+        transition: opacity 0.15s ease;
+    }
+
+    [data-theme="dark"] .date::-webkit-calendar-picker-indicator { filter: invert(1); }
+
+    .date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+    .date.input-validation-error::-webkit-calendar-picker-indicator { display: none; }
+
+.select {
+    cursor: pointer;
+    padding-right: 36px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 8px;
+}
+
+    /* Grey text while the "Select ..." placeholder option is chosen */
+    .select.placeholder-shown { color: var(--placeholder); }
+
+    .select option { color: #1b1b1b; background: #ffffff; }
+    [data-theme="dark"] .select option { color: #ffffff; background: #2b2b2b; }
+
+/* Validation */
+.input-validation-error,
+.input.input-validation-error,
+.date.input-validation-error,
+.select.input-validation-error {
+    border-color: var(--danger) !important;
+    background-color: var(--surface-input);
+}
+
+.input.input-validation-error,
+.date.input-validation-error {
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d13438' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px 16px;
+}
+
+/* Valid fields keep the normal border colour (no green) */
+
+.validation-message,
+.validation-message * {
+    display: block;
+    margin: 4px 0 4px 2px;
+    font-size: 12.5px !important;
+    color: var(--danger);
+}
+
+.validation-errors { color: var(--danger); }
+
+/* Field label */
+.label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-2);
+}
+
+/* Windows 11 style switch (used for "Activate" toggles) */
+.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.formcheckinput {
+    appearance: none;
+    -webkit-appearance: none;
+    flex-shrink: 0;
+    position: relative;
+    width: 40px;
+    height: 20px;
+    margin: 0 !important;
+    border: 1px solid var(--input-border-bottom);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+    .formcheckinput::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 4px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--text-2);
+        transform: translateY(-50%);
+        transition: left 0.15s ease, width 0.15s ease, background 0.15s ease;
+    }
+
+    .formcheckinput:hover::before { width: 14px; }
+
+    .formcheckinput:checked {
+        background: var(--accent);
+        border-color: var(--accent);
+    }
+
+        .formcheckinput:checked::before {
+            left: 22px;
+            background: var(--on-accent);
+        }
+
+        .formcheckinput:checked:hover::before { left: 20px; }
+
+    .formcheckinput:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.formchecklabel {
+    margin: 0;
+    line-height: 1;
+    font-size: 14px;
+    color: var(--text-2);
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Bootstrap controls (used by a few older widgets) */
+.form-control, .form-select {
+    background-color: var(--surface-input);
+    border-color: var(--input-border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+}
+
+    .form-control:focus, .form-select:focus {
+        background-color: var(--surface-input);
+        color: var(--text);
+        border-color: var(--input-border);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+    }
+
+.form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+
+input[type="checkbox"]:focus,
+input[type="radio"]:focus { box-shadow: none; }
+
+.form-floating > .form-control::placeholder { color: var(--text-3); }
+
+/*#endregion */
+
+/*#region 5. Buttons */
+
+/* Buttons never carry a drop shadow (Bootstrap's coloured .btn-* shadows are overridden) */
+.btn, .btn:hover, .btn:active, .btn:focus, .btn:focus-visible,
+.btn-primary, .btn-success, .btn-secondary, .btn-danger, .btn-warning, .btn-info, .btn-light {
+    box-shadow: none !important;
+}
+
+.btn {
+    --btn-bg: var(--surface-2);
+    --btn-hover-bg: var(--surface-3);
+    --btn-fg: var(--text);
+    --btn-border: var(--border-strong);
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto;
+    height: 32px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--btn-fg);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+}
+
+    /* Hover/active use our own colours (Bootstrap's green success hover is overridden), no filter, no shadow */
+    .btn:hover { background-color: var(--btn-hover-bg, var(--btn-bg)); border-color: var(--btn-hover-border, var(--btn-border)); color: var(--btn-fg); filter: none; box-shadow: none; }
+    .btn:active { background-color: var(--btn-active-bg, var(--btn-hover-bg, var(--btn-bg))); border-color: var(--btn-hover-border, var(--btn-border)); transform: scale(0.985); filter: none; box-shadow: none; color: var(--btn-fg); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; background-color: var(--btn-hover-bg, var(--btn-bg)); }
+    .btn:disabled, .btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+    /* Accent (primary) */
+    .btn.btn-primary { --btn-bg: var(--accent); --btn-hover-bg: var(--accent-hover); --btn-active-bg: var(--accent-pressed); --btn-fg: var(--on-accent); --btn-border: transparent; }
+    /* Positive actions use the accent too – keeps the UI calm and consistent */
+    .btn.btn-success { --btn-bg: var(--accent); --btn-hover-bg: var(--accent-hover); --btn-active-bg: var(--accent-pressed); --btn-fg: var(--on-accent); --btn-border: transparent; }
+    .btn.btn-secondary { --btn-hover-bg: var(--surface-3); --btn-bg: var(--surface-2); --btn-fg: var(--text); --btn-border: var(--border-strong); }
+    .btn.btn-danger { --btn-hover-bg: color-mix(in srgb, var(--danger) 85%, #000); --btn-bg: var(--danger); --btn-fg: #ffffff; --btn-border: transparent; }
+    [data-theme="dark"] .btn.btn-danger { --btn-fg: #3b0a10; }
+    .btn.btn-warning { --btn-hover-bg: color-mix(in srgb, var(--warning-solid) 88%, #000); --btn-bg: var(--warning-solid); --btn-fg: #1b1b1b; --btn-border: transparent; }
+    .btn.btn-warning.text-white { color: #1b1b1b !important; }
+    .btn.btn-info { --btn-hover-bg: var(--accent-soft-border); --btn-bg: var(--accent-soft); --btn-fg: var(--accent); --btn-border: var(--accent-soft-border); }
+    .btn.btn-outline-primary { --btn-hover-bg: var(--accent-soft); --btn-bg: transparent; --btn-fg: var(--accent); --btn-border: var(--accent); }
+    .btn.btn-light { --btn-hover-bg: var(--surface-3); --btn-bg: var(--surface); --btn-fg: var(--text); }
+    .btn.btn-sm { height: 28px; padding: 0 12px; font-size: 13px; }
+    .btn.border-0 { border: 1px solid var(--btn-border) !important; }
+
+    .btn-primary.text-white, .btn-success.text-white { color: var(--on-accent) !important; }
+
+.form-action-bar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 1030;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow-3);
+}
+
+    .form-action-bar .btn { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+
+/*#endregion */
+
+/*#region 6. Cards, tables and Bootstrap overrides */
+
+.card {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-1);
+}
+
+.card-header, .card-footer {
+    background: var(--surface-2);
+    border-color: var(--border);
+}
+
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--text);
+    --bs-table-border-color: var(--border);
+    --bs-table-striped-bg: var(--table-stripe);
+    --bs-table-hover-bg: var(--table-row-hover);
+}
+
+.badge { border-radius: var(--radius-sm); font-weight: 600; }
+
+.dropdown-menu, .modal-content {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-3);
+}
+
+.alert { border-radius: var(--radius); }
+
+.avatar-initial {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: var(--shadow-1);
+}
+
+/*#endregion */
+
+/*#region 7. Utilities, scrollbars and Blazor error UI */
+
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: var(--radius-sm);
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; border: 2px solid transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+.blazor-error-boundary {
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: #ffffff;
+    border-radius: var(--radius);
+    background: #b32121 url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=") no-repeat 1rem/1.8rem;
+}
+
+    .blazor-error-boundary::after { content: "An error has occurred."; }
+
+#blazor-error-ui {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 2000;
+    display: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 1.25rem 0.7rem;
+    color: var(--text);
+    background: var(--warning-soft);
+    border-top: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-3);
+}
+
+    #blazor-error-ui .dismiss { position: absolute; top: 0.5rem; right: 0.75rem; cursor: pointer; }
+
+/*#endregion */
+
+
+/* ==========================================================================
+   Structured forms: required marker, hints, action bar, sticky review panel
+   ========================================================================== */
+.label .req { color: var(--danger); margin-left: 2px; }
+.form-hint { margin-top: 5px; font-size: 12.5px; color: var(--text-3); }
+.form-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--border); }
+.review-col { align-self: flex-start; }
+@media (min-width: 992px) { .review-col { position: sticky; top: 72px; } }

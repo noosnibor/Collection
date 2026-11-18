@@ -1,0 +1,659 @@
+@page "/CLLGRABS"
+
+
+@using System.Globalization
+@rendermode InteractiveServer
+
+@inject ToastService ToastService
+@inject LocalTimeService LocalTime
+@inject ICollectionRepository CollectionRepository
+@inject ICurrencyRepository CurrencyRepository
+@inject ICollectionTypeRepository CollectionTypeRepository
+@inject IPaymentTypeRepository PaymentTypeRepository
+@inject IMemberTypeRepository MemberTypeRepository
+@inject UserSessionService UserSession
+@inject ILogService<Collection> Log
+@inject ThemeService Theme
+
+@attribute [Authorize(Policy = "DataEntry.View")]
+
+
+<!-- Load Bar -->
+<Spinner IsVisible="@__isSubmitting" Message="Saving Record" />
+
+<!-- Banner -->
+<Banner Title="Data Entry Management"
+        Subtitle="A complete overview of all giving activity"
+        BackgroundImage="@Theme.ImageBackground"
+        Alignment="left" />
+
+<!-- Tabs -->
+<Tabs @bind-ActiveTab="__currentTab">
+       <Tab Id="dataentry" Label="Collection Data Entry" Icon="user-plus">
+        <Content>
+            <div class="row">
+                <div class="col-12">
+
+                  
+
+                    <EditForm Model="__parameter" OnValidSubmit="OnValidCollectionSubmit">
+                        <DataAnnotationsValidator />
+                        <div class="row">
+                            <div class="col-lg-7">
+
+                                @* ---------- Who gave ---------- *@
+                                <FormSection Title="Who gave" Description="Search for a member, or type a name for a visitor.">
+                                    <div class="mb-4">
+                                        <SearchTextbox TItem="CollectionModel"
+                                                       Items="@__userCollectionModel.ToList()"
+                                                       SearchTextSelector="@(p => $"{p.fstrFirstname}, {p.fstrLastname}, {p.fstrEmailAddress}")"
+                                                       LabelSelector="@(p => $"{p.fstrFirstname + " " + p.fstrLastname}")"
+                                                       SubLabelSelector="@(p => p.fstrEmailAddress)"
+                                                       OnItemSelected="AddPersonToTable" />
+                                    </div>
+
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">First name <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrFirstname" />
+                                            <ValidationMessage For="@(() => __parameter.fstrFirstname)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Last name <span class="req" aria-hidden="true">*</span></label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrLastname" />
+                                            <ValidationMessage For="@(() => __parameter.fstrLastname)" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Email address</label>
+                                            <InputText class="input" @bind-Value="__parameter.fstrEmailAddress" />
+                                            <ValidationMessage For="@(() => __parameter.fstrEmailAddress)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Membership type <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.flngMemberTypeKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.flngMemberTypeKey">
+                                                <option value=""></option>
+                                                @foreach (var req in __memberTypeModel)
+                                                {
+                                                    <option value="@req.flngKey">@req.fstrType</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.flngMemberTypeKey)" />
+                                        </div>
+                                    </div>
+                                </FormSection>
+
+                                @* ---------- What was given ---------- *@
+                                <FormSection Title="What was given" Description="Which collection this belongs to and how it was paid.">
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Collection number <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="select" @bind-Value="__parameter.flngCollectionNumber" @bind-Value:after="OnCollectionNumberChanged">
+                                                @foreach (var req in StaticDataService.GetCollectionNumber())
+                                                {
+                                                    <option value="@req.flngCollectionNumberKey">@req.fstrCollectionNumberType</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.flngCollectionNumber)" />
+                                        </div>
+
+                                        <AuthorizeView Policy="DataEntry.TransactionDate" Context="Collection">
+                                            <Authorized>
+                                                <div class="col-sm-6">
+                                                    <label class="fw-semibold mb-2 label">Transaction date <span class="req" aria-hidden="true">*</span></label>
+                                                    <InputDate TValue="DateTime?"
+                                                               Value="__parameter.fdtmTransactionDate"
+                                                               ValueChanged="OnDateChanged"
+                                                               ValueExpression="() => __parameter.fdtmTransactionDate"
+                                                               max="@LocalTime.Today.ToString("yyyy-MM-dd")"
+                                                               class="date" />
+                                                    <ValidationMessage For="@(() => __parameter.fdtmTransactionDate)" />
+                                                </div>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    </div>
+
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Collection type <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.flngCollectionTypeKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.flngCollectionTypeKey">
+                                                <option value=""></option>
+                                                @foreach (var req in __collectionTypeModel)
+                                                {
+                                                    <option value="@req.flngKey">@req.fstrType</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.flngCollectionTypeKey)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Payment type <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.flngPaymentTypeKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.flngPaymentTypeKey">
+                                                <option value=""></option>
+                                                @foreach (var req in __paymentTypeModel)
+                                                {
+                                                    <option value="@req.flngKey">@req.fstrType</option>
+                                                }
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => __parameter.flngPaymentTypeKey)" />
+                                        </div>
+                                    </div>
+                                </FormSection>
+
+                                @* ---------- Amount ---------- *@
+                                <FormSection Title="Amount" Description="Enter the amount in the currency it was given. It is converted to your local currency automatically.">
+                                    <div class="row g-3">
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Currency <span class="req" aria-hidden="true">*</span></label>
+                                            <InputSelect class="@($"select {(__parameter.fstrCurrencyKey == null ? "placeholder-shown" : "")}")" @bind-Value="__parameter.fstrCurrencyKey">
+                                                <option value=""></option>
+                                                @foreach (var req in __currencyModel)
+                                                {
+                                                    <option value="@req.fstrCurrency">@req.fstrCurrencyType @req.fcurAmount.ToString("N")</option>
+                                                }
+                                            </InputSelect>
+                                            <div class="form-hint">Rate in force on the transaction date</div>
+                                            <ValidationMessage For="@(() => __parameter.fstrCurrencyKey)" />
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="fw-semibold mb-2 label">Amount <span class="req" aria-hidden="true">*</span></label>
+                                            <InputNumber class="input" @bind-Value="__parameter.fcurAmount" />
+                                            <ValidationMessage For="@(() => __parameter.fcurAmount)" />
+                                        </div>
+                                    </div>
+
+                                    <div class="checkbox d-flex align-items-center gap-2 mt-4">
+                                        <input class="formcheckinput" type="checkbox" id="chk-active" @bind="__parameter.fblnActive">
+                                        <label class="formchecklabel mb-0 label" for="chk-active">Active</label>
+                                    </div>
+                                </FormSection>
+
+                                @* ---------- Actions ---------- *@
+                                <div class="form-actions">
+                                    @if (!__isUpdate)
+                                    {
+                                        <AuthorizeView Policy="DataEntry.Save" Context="Collection">
+                                            <Authorized>
+                                                <button class="btn btn-success" type="submit" disabled="@__isSubmitting">Save record</button>
+                                                <button class="btn btn-secondary border-0" type="button" @onclick="ResetCollectionProperties">Discard</button>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    }
+                                    else
+                                    {
+                                        <AuthorizeView Policy="DataEntry.Update" Context="Collection">
+                                            <Authorized>
+                                                <button class="btn btn-warning text-white" type="submit" disabled="@__isSubmitting">Update record</button>
+                                                <button class="btn btn-secondary border-0" type="button" @onclick="ResetCollectionProperties">Discard</button>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    }
+                                </div>
+
+                            </div>
+
+                            <div class="col-lg-5 review-col">
+                                <InfoCard Model="@__parameter"
+                                          Title="Review collection"
+                                          Subtitle="Check the details before you save"
+                                          Img="/img/collection.png"
+                                          Exclude="@(["fcurLocalAmount"])"
+                                          ValueOverrides="@__reviewNames"
+                                          HighlightNote="@__reviewNote"
+                                          HighlightValue="@__reviewLocalAmount" />
+
+                            </div>
+                        </div>
+
+                    </EditForm>
+
+                    <CollectionSummary Rows="__collectionModel"
+                                       CollectionTypeName="CollectionTypeName"
+                                       PaymentTypeName="PaymentTypeName"
+                                       LocalCurrency="@(UserSession.CurrencyKey ?? "")"
+                                       Caption="@($"Collection {CollectionNumberName(__parameter.flngCollectionNumber)} · {(__parameter.fdtmTransactionDate ?? LocalTime.Today):MMM d, yyyy}")" />
+
+                    <div class="mt-5">
+                        <Table TItem="CollectionModel"
+                               Items="__collectionModel"
+                               Title="Collections"
+                               OnRowClick="SelectedCollection"
+                               SearchFilter="SearchCollection"
+                               AllowFiltering="true"
+                               HeaderBackgroundColor="@Theme.TableHeaderColor"
+                               SumSelector="@(s => s.fblnActive ? s.fcurLocalAmount : 0)"
+                           SumPrefix="@UserSession.CurrencyKey"
+                               SumColumnIndex="7"
+                               ColumnSpan="9"
+                               IsInactive="@( u => !u.fblnActive)">
+
+                            <HeaderTemplate>
+                                <th>Name</th>
+                                <th>Collection Number</th>
+                                <th>Member Type</th>
+                                <th>Collection Type</th>
+                                <th>Payment Type</th>
+                                <th>Currency</th>
+                                <th>Amount</th>
+                                <th>Local Amount</th>
+                                <th>Submitted By</th>
+                            </HeaderTemplate>
+
+                            <RowTemplate Context="collection">
+                                <td>@(collection.fstrFirstname + " " + collection.fstrLastname) </td>
+                                <td>@CollectionNumberName(collection.flngCollectionNumber) </td>
+                                <td>@MemberTypeName(collection.flngMemberTypeKey) </td>
+                                <td>@CollectionTypeName(collection.flngCollectionTypeKey) </td>
+                                <td>@PaymentTypeName(collection.flngPaymentTypeKey) </td>
+                                <td>@collection.fstrCurrencyKey</td>
+                                <td>@collection.fcurAmount.ToString("N2")</td>
+                                <td>@collection.fcurLocalAmount.ToString("N2")</td>
+                                <td>
+                                    <span class="badge bg-success-subtle text-success">
+                                        @collection.fstrWho
+                                    </span>
+                                </td>
+                            </RowTemplate>
+
+                        </Table>
+                    </div>
+
+                </div>
+            </div>
+        </Content>
+    </Tab>
+</Tabs>
+
+
+@code {
+
+    #region Private Fields
+
+    /// <summary>The tab currently shown ("dataentry" or the people list tab).</summary>
+    private string __currentTab = "dataentry";
+
+    /// <summary>The form model bound to the data-entry form.</summary>
+    private CollectionDataTransferObject __parameter = new();
+
+    // Lookup lists (only ACTIVE items for the user's location are loaded).
+    private IEnumerable<MemberTypeModel> __memberTypeModel = [];
+    private IEnumerable<CollectionTypeModel> __collectionTypeModel = [];
+    private IEnumerable<PaymentTypeModel> __paymentTypeModel = [];
+    private IEnumerable<CurrencyModel> __currencyModel = [];
+
+    /// <summary>Records for the selected date / collection number (shown in the table).</summary>
+    private IEnumerable<CollectionModel> __collectionModel = [];
+
+    /// <summary>Distinct people who have given before (used by the "search a name" box).</summary>
+    private IEnumerable<CollectionModel> __userCollectionModel = [];
+
+    private bool __isUpdate;
+    private bool __isSubmitting;
+
+    /// <summary>Remembered so the form keeps the same service number and date after a save / reset.</summary>
+    private int __previousCollectionNumber = 1;
+    private DateTime? __previousTransactionDate;
+
+    /// <summary>Cancels an in-flight table reload when a newer one starts (fast switching between numbers).</summary>
+    private CancellationTokenSource? __reloadCts;
+
+    #endregion
+
+    #region Lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        __previousTransactionDate = LocalTime.Today;
+        __parameter = NewEntry();
+
+        await LoadCurrency();
+        await LoadData();
+    }
+
+    #endregion
+
+    #region Data Loading
+
+    /// <summary>
+    /// Loads the active currencies for the user's location and keeps only the ones whose
+    /// effective period covers the selected transaction date.
+    /// </summary>
+    private async Task LoadCurrency()
+    {
+        try
+        {
+            var currencies = await CurrencyRepository.SelectCurrency(null, null, UserSession.LocationKey, true);
+
+            if (__parameter.fdtmTransactionDate.HasValue)
+            {
+                var selectedDate = __parameter.fdtmTransactionDate.Value.Date;
+                currencies = currencies
+                    .Where(c => c.fdtmEffectiveFrom.Date <= selectedDate && c.fdtmEffectiveTo.Date >= selectedDate)
+                    .ToList();
+            }
+
+            __currencyModel = currencies;
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load currencies", ex);
+        }
+    }
+
+    /// <summary>Loads the lookup lists, the day's collections and the list of known people.</summary>
+    private async Task LoadData()
+    {
+        try
+        {
+            var location = UserSession.LocationKey;
+
+            __memberTypeModel = await MemberTypeRepository.SelectMemberType(location: location, active: true);
+            __collectionTypeModel = await CollectionTypeRepository.SelectCollectionType(location: location, active: true);
+            __paymentTypeModel = await PaymentTypeRepository.SelectPaymentType(location: location, active: true);
+
+            // BUG FIX: the date can be cleared by the user; .Value used to throw on null.
+            var date = __parameter.fdtmTransactionDate ?? LocalTime.Today;
+            var forDate = await CollectionRepository.SelectCollection(location, null, date);
+            __collectionModel = forDate.Where(x => x.flngCollectionNumber == __parameter.flngCollectionNumber).ToList();
+
+            var everyone = await CollectionRepository.SelectCollection(location, null, null);
+            __userCollectionModel = everyone
+                .GroupBy(x => new { x.fstrFirstname, x.fstrLastname })
+                .Select(g => g.First())
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to load data", ex);
+        }
+        finally
+        {
+        }
+    }
+
+    #endregion
+
+    #region Review panel
+
+    /// <summary>Readable names for the key values shown in the review panel.</summary>
+    private IReadOnlyDictionary<string, string?> __reviewNames => new Dictionary<string, string?>
+    {
+        [nameof(CollectionDataTransferObject.flngMemberTypeKey)] = __memberTypeModel.FirstOrDefault(m => m.flngKey == __parameter.flngMemberTypeKey)?.fstrType,
+        [nameof(CollectionDataTransferObject.flngCollectionTypeKey)] = __collectionTypeModel.FirstOrDefault(m => m.flngKey == __parameter.flngCollectionTypeKey)?.fstrType,
+        [nameof(CollectionDataTransferObject.flngPaymentTypeKey)] = __paymentTypeModel.FirstOrDefault(m => m.flngKey == __parameter.flngPaymentTypeKey)?.fstrType
+    };
+
+    /// <summary>Live converted amount in the user's local currency (null until a rate applies).</summary>
+    private string? __reviewLocalAmount
+    {
+        get
+        {
+            var rate = FindRate(__parameter.fstrCurrencyKey, __parameter.fdtmTransactionDate);
+            return rate is null || __parameter.fcurAmount <= 0
+                ? null
+                : $"{UserSession.CurrencyKey} {(__parameter.fcurAmount * rate.Value).ToString("N2", CultureInfo.CurrentCulture)}";
+        }
+    }
+
+    private string? __reviewNote
+    {
+        get
+        {
+            var rate = FindRate(__parameter.fstrCurrencyKey, __parameter.fdtmTransactionDate);
+            return rate is null || __parameter.fcurAmount <= 0
+                ? "Amount in your local currency"
+                : $"{__parameter.fstrCurrencyKey} {__parameter.fcurAmount.ToString("N2", CultureInfo.CurrentCulture)} × {rate.Value.ToString("0.####", CultureInfo.CurrentCulture)}";
+        }
+    }
+
+    #endregion
+
+    #region Form Actions
+
+    /// <summary>Creates a blank entry that keeps the remembered date and collection number.</summary>
+    private CollectionDataTransferObject NewEntry() => new()
+    {
+        fstrWho = UserSession.Username,
+        fstrLocationKey = UserSession.LocationKey,
+        flngCollectionNumber = __previousCollectionNumber,
+        fdtmTransactionDate = __previousTransactionDate,
+        fstrCurrencyKey = UserSession.CurrencyKey
+    };
+
+    /// <summary>Clears the form and reloads the lists.</summary>
+    private async Task ResetCollectionProperties()
+    {
+        __parameter = NewEntry();
+        __isUpdate = false;
+        __isSubmitting = false;
+
+        await LoadCurrency();
+        await LoadData();
+    }
+
+    /// <summary>Validates the exchange rate, then saves (insert or update) the collection.</summary>
+    private async Task OnValidCollectionSubmit()
+    {
+        if (__isSubmitting) return;   // protects against a double click
+
+        __isSubmitting = true;
+        await GlobalService.DelayAsync();
+
+        try
+        {
+            if (__parameter.flngCollectionNumber == 0)
+            {
+                ToastService.ShowWarning("Please select a collection number");
+                return;
+            }
+
+            // BUG FIX: when no rate was found the local amount silently stayed at 0 (or at a stale
+            // value) and the record was saved wrong. Saving now stops with a clear warning.
+            var rate = FindRate(__parameter.fstrCurrencyKey, __parameter.fdtmTransactionDate);
+            if (rate is null)
+            {
+                ToastService.ShowWarning($"No active exchange rate for {__parameter.fstrCurrencyKey} on the selected date. Please add one in the Currency module.");
+                return;
+            }
+
+            // Round exactly like the database column (DECIMAL(18,2)) so what is shown equals what is stored.
+            __parameter.fcurLocalAmount = Math.Round(__parameter.fcurAmount * rate.Value, 2, MidpointRounding.AwayFromZero);
+
+            __previousCollectionNumber = __parameter.flngCollectionNumber;
+            __previousTransactionDate = __parameter.fdtmTransactionDate;
+
+            var message = await CollectionRepository.AddOrUpdateCollection(__parameter, insert: !__isUpdate);
+
+            ToastService.Show(message.ToastType, message.Message!);
+
+            if (message.ToastType == ToastTypeModel.Success)
+                await ResetCollectionProperties();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to save the record", ex);
+        }
+        finally
+        {
+            __isSubmitting = false;
+        }
+    }
+
+    /// <summary>Finds the exchange rate (&gt; 0) for a currency on a date, or <c>null</c> when none applies.</summary>
+    private decimal? FindRate(string? currencyKey, DateTime? date)
+    {
+        if (string.IsNullOrWhiteSpace(currencyKey) || date is null) return null;
+
+        var day = date.Value.Date;
+        var rate = __currencyModel
+            .Where(c => string.Equals(c.fstrCurrency, currencyKey, StringComparison.OrdinalIgnoreCase)
+                        && c.fdtmEffectiveFrom.Date <= day
+                        && c.fdtmEffectiveTo.Date >= day)
+            .Select(c => c.fcurAmount)
+            .FirstOrDefault();
+
+        return rate > 0 ? rate : null;
+    }
+
+    /// <summary>Loads an existing record into the form so it can be updated.</summary>
+    private void SelectedCollection(CollectionModel collection)
+    {
+        __isUpdate = true;
+        __parameter = new()
+        {
+            flngKey = collection.flngKey,
+            fstrFirstname = collection.fstrFirstname,
+            fstrLastname = collection.fstrLastname,
+            fstrEmailAddress = collection.fstrEmailAddress,
+            fdtmTransactionDate = collection.fdtmTransactionDate,
+            flngCollectionNumber = collection.flngCollectionNumber,
+            flngMemberTypeKey = collection.flngMemberTypeKey,
+            flngCollectionTypeKey = collection.flngCollectionTypeKey,
+            flngPaymentTypeKey = collection.flngPaymentTypeKey,
+            fcurAmount = collection.fcurAmount,
+            fcurLocalAmount = collection.fcurLocalAmount,
+            fstrCurrencyKey = collection.fstrCurrencyKey,
+            fstrLocationKey = collection.fstrLocationKey,
+            fblnActive = collection.fblnActive,
+            fstrWho = collection.fstrWho,
+            fdtmWhen = collection.fdtmWhen
+        };
+    }
+
+    /// <summary>
+    /// Runs when the collection number changes: remembers it and reloads only the table
+    /// from the database. The form the user is typing in is left untouched.
+    /// </summary>
+    private async Task OnCollectionNumberChanged()
+    {
+        __previousCollectionNumber = __parameter.flngCollectionNumber;
+
+        __reloadCts?.Cancel();
+        __reloadCts = new CancellationTokenSource();
+        await ReloadCollectionTableAsync(__reloadCts.Token);
+    }
+
+    /// <summary>Re-queries the day's records for the selected collection number.</summary>
+    private async Task ReloadCollectionTableAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var date = __parameter.fdtmTransactionDate ?? LocalTime.Today;
+            var forDate = await CollectionRepository.SelectCollection(UserSession.LocationKey, null, date);
+
+            // A newer reload started while we were waiting – drop this stale result.
+            if (cancellationToken.IsCancellationRequested) return;
+
+            var number = __parameter.flngCollectionNumber;
+            __collectionModel = forDate.Where(x => x.flngCollectionNumber == number).ToList();
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync("Unable to reload the collection table", ex);
+        }
+        finally
+        {
+        }
+    }
+
+    /// <summary>
+    /// Runs when the transaction date changes. Reloads the date-dependent data but KEEPS what the
+    /// user already typed (BUG FIX: the whole form used to be wiped).
+    /// </summary>
+    private async Task OnDateChanged(DateTime? value)
+    {
+        __parameter.fdtmTransactionDate = value;
+        __previousTransactionDate = value;
+
+        await LoadCurrency();
+
+        // The selected currency may not be valid on the new date – fall back to the user's currency.
+        if (!__currencyModel.Any(c => string.Equals(c.fstrCurrency, __parameter.fstrCurrencyKey, StringComparison.OrdinalIgnoreCase)))
+            __parameter.fstrCurrencyKey = UserSession.CurrencyKey;
+
+        await LoadData();
+    }
+
+    /// <summary>
+    /// Starts a new entry for a person picked from the search box.
+    /// </summary>
+    /// <remarks>
+    /// BUG FIX: this used to build its own object, so it drifted away from <see cref="NewEntry"/>:
+    /// it left the member type empty, copied the currency and location of the person's OLD record
+    /// (the currency may not exist on today's date, leaving the drop-down blank), and ignored the
+    /// user's own defaults. It now starts from <see cref="NewEntry"/> and only copies what belongs
+    /// to the person.
+    /// </remarks>
+    private void AddPersonToTable(CollectionModel person)
+    {
+        if (person is null)
+            return;
+
+        __currentTab = "dataentry";
+        __isUpdate = false;
+        __isSubmitting = false;
+
+        var entry = NewEntry();                       // same defaults as a blank form
+        entry.fstrFirstname = person.fstrFirstname;
+        entry.fstrLastname = person.fstrLastname;
+        entry.fstrEmailAddress = person.fstrEmailAddress;
+
+        // Member type: only when it is still an active option (otherwise the drop-down would be blank).
+        if (__memberTypeModel.Any(m => m.flngKey == person.flngMemberTypeKey))
+            entry.flngMemberTypeKey = person.flngMemberTypeKey;
+
+        // Currency: keep the person's usual currency only when a rate exists for the selected date.
+        if (__currencyModel.Any(c => string.Equals(c.fstrCurrency, person.fstrCurrencyKey, StringComparison.OrdinalIgnoreCase)))
+            entry.fstrCurrencyKey = person.fstrCurrencyKey;
+
+        __parameter = entry;
+    }
+
+    #endregion
+
+    #region Table Helpers
+
+    /// <summary>Text filter for the collections table.</summary>
+    /// <remarks>
+    /// BUG FIX: the old filter used <c>FirstOrDefault()!</c>, which threw when a record referred to
+    /// a member / payment / collection type that is no longer active.
+    /// </remarks>
+    private bool SearchCollection(CollectionModel collection, string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        bool Has(string? value) => value?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(collection.fstrFirstname)
+            || Has(collection.fstrLastname)
+            || Has($"{collection.fstrFirstname} {collection.fstrLastname}")
+            || Has(MemberTypeName(collection.flngMemberTypeKey))
+            || Has(PaymentTypeName(collection.flngPaymentTypeKey))
+            || Has(CollectionTypeName(collection.flngCollectionTypeKey))
+            || Has(CollectionNumberName(collection.flngCollectionNumber))
+            || Has(collection.fstrCurrencyKey);
+    }
+
+    // Display helpers used by the table (they return a dash when the lookup is missing / inactive).
+    private string MemberTypeName(Guid? key) => __memberTypeModel.FirstOrDefault(m => m.flngKey == key)?.fstrType ?? "—";
+    private string PaymentTypeName(Guid? key) => __paymentTypeModel.FirstOrDefault(m => m.flngKey == key)?.fstrType ?? "—";
+    private string CollectionTypeName(Guid? key) => __collectionTypeModel.FirstOrDefault(m => m.flngKey == key)?.fstrType ?? "—";
+
+    private static string CollectionNumberName(int key) =>
+        StaticDataService.GetCollectionNumber().FirstOrDefault(m => m.flngCollectionNumberKey == key)?.fstrCollectionNumberType ?? "—";
+
+    #endregion
+
+    #region Error Handling
+
+    /// <summary>Logs the technical detail and shows the user a short, friendly message.</summary>
+    private async Task ReportFailureAsync(string friendlyMessage, Exception ex)
+    {
+        await Log.LogError($"{friendlyMessage}: {ex}");
+        ToastService.ShowError($"{friendlyMessage}. Please try again.");
+    }
+
+    #endregion
+}

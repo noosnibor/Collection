@@ -1,0 +1,272 @@
+@implements IDisposable
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthorizationService AuthorizationService
+
+<div class="sidebar-app">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-avatar">@GetInitial(UserName)</div>
+            <div class="sidebar-user-info">
+                <div class="sidebar-user-name">@UserName</div>
+                <div class="sidebar-user-app">@AppName</div>
+            </div>
+        </div>
+
+        <div class="sidebar-search">
+            <svg class="sidebar-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text"
+                   placeholder="@SearchPlaceholder"
+                   @bind="SidebarSearch"
+                   @bind:event="oninput" />
+        </div>
+
+        <nav class="sidebar-nav">
+            @foreach (var item in FilteredItems)
+            {
+                var auth = GetAuth(item);
+
+                <div class="sidebar-item-wrap">
+                    @if (auth.IsLocked)
+                    {
+                        <div class="sidebar-item locked"
+                             title="@(string.IsNullOrEmpty(auth.LockReason) ? "You don't have access to this item" : auth.LockReason)"
+                             @onclick="() => OnLockedClicked(item)">
+                            @if (!string.IsNullOrEmpty(item.SvgPath))
+                            {
+                                @* <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24"
+                                     xmlns="http://www.w3.org/2000/svg"
+                                     aria-hidden="true">
+                                    @((MarkupString)item.SvgPath)
+                                </svg> *@
+                                <span class="sidebar-icon">
+                                    @((MarkupString)GetIconSvg(item.SvgPath, "currentColor", 18))
+                                </span>
+                            }
+                            <span class="sidebar-label">@((MarkupString)Highlight(item.Label))</span>
+                            <span class="sidebar-lock" aria-label="Locked">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                    <path d="M8 1a3 3 0 0 0-3 3v3H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3zm-2 6V4a2 2 0 1 1 4 0v3H6z" />
+                                </svg>
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <NavLink class="sidebar-item"
+                                 ActiveClass="active"
+                                 Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                                 href="@item.Href">
+
+                            @if (!string.IsNullOrEmpty(item.SvgPath))
+                            {
+                                @* <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24"
+                                     xmlns="http://www.w3.org/2000/svg"
+                                     aria-hidden="true">
+                                    @((MarkupString)item.SvgPath)
+                                </svg> *@
+                                <span class="sidebar-icon">
+                                    @((MarkupString)GetIconSvg(item.SvgPath, "currentColor", 18))
+                                </span>
+                            }
+                            <span class="sidebar-label">@((MarkupString)Highlight(item.Label))</span>
+
+                            @if (!string.IsNullOrEmpty(item.Badge))
+                            {
+                                <span class="sidebar-badge">@item.Badge</span>
+                            }
+                        </NavLink>
+                    }
+                </div>
+            }
+
+            @if (!FilteredItems.Any())
+            {
+                <div class="sidebar-empty">No matches</div>
+            }
+        </nav>
+    </aside>
+</div>
+
+@code {
+    public class SidebarItem
+    {
+        public string Label { get; set; } = "";
+        public string Href { get; set; } = "";
+        public bool ExactMatch { get; set; } = false;
+        public string? Badge { get; set; }
+
+        // Explicit lock (independent of authorization). Still honored.
+        public bool IsLocked { get; set; } = false;
+        public string? LockReason { get; set; }
+        public string? SvgPath { get; set; }
+
+        // --- Authorization ---
+
+        // User must be signed in for this item.
+        public bool RequireAuthenticated { get; set; } = false;
+
+        // User must be in AT LEAST ONE of these roles (OR semantics).
+        // Leave null/empty to skip the role check.
+        public string[]? RequiredRoles { get; set; }
+
+        // Name of an authorization policy the user must satisfy.
+        // Leave null/empty to skip the policy check.
+        public string? RequiredPolicy { get; set; }
+    }
+
+    [Parameter] public string UserName { get; set; } = "User";
+    [Parameter] public string AppName { get; set; } = "";
+    [Parameter] public string SearchPlaceholder { get; set; } = "";
+    [Parameter] public IReadOnlyList<SidebarItem> Items { get; set; } = Array.Empty<SidebarItem>();
+    [Parameter] public EventCallback<SidebarItem> OnItemSelected { get; set; }
+    [Parameter] public EventCallback<SidebarItem> OnLockedItemClicked { get; set; }
+
+    // When true, items the user isn't authorized for are shown as locked.
+    // When false (default), they're hidden entirely.
+    [Parameter] public bool ShowUnauthorizedAsLocked { get; set; } = false;
+
+    private record ItemAuth(bool IsVisible, bool IsLocked, string? LockReason);
+
+    private string SidebarSearch { get; set; } = string.Empty;
+    private string _currentRelativeUri = "";
+
+    // Reference-keyed cache of evaluated authorization results.
+    private readonly Dictionary<SidebarItem, ItemAuth> _authCache = new();
+
+    private IEnumerable<SidebarItem> FilteredItems =>
+        Items.Where(i => GetAuth(i).IsVisible)
+             .Where(i => string.IsNullOrWhiteSpace(SidebarSearch) ||
+                         i.Label.Contains(SidebarSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized()
+    {
+        _currentRelativeUri = Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.LocationChanged += OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    // Re-evaluate whenever Items (or other params) change.
+    protected override async Task OnParametersSetAsync() => await EvaluateAuthorizationAsync();
+
+    private async Task EvaluateAuthorizationAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        var results = new Dictionary<SidebarItem, ItemAuth>();
+        foreach (var item in Items)
+            results[item] = await ResolveAuthAsync(user, item);
+
+        _authCache.Clear();
+        foreach (var kv in results)
+            _authCache[kv.Key] = kv.Value;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<ItemAuth> ResolveAuthAsync(ClaimsPrincipal user, SidebarItem item)
+    {
+        var authorized = true;
+
+        if (item.RequireAuthenticated && !(user.Identity?.IsAuthenticated ?? false))
+            authorized = false;
+
+        if (authorized && item.RequiredRoles is { Length: > 0 })
+            authorized = item.RequiredRoles.Any(r => user.IsInRole(r));
+
+        if (authorized && !string.IsNullOrEmpty(item.RequiredPolicy))
+        {
+            var result = await AuthorizationService.AuthorizeAsync(user, item.RequiredPolicy);
+            authorized = result.Succeeded;
+        }
+
+        if (authorized)
+            return new ItemAuth(IsVisible: true, IsLocked: item.IsLocked, LockReason: item.LockReason);
+
+        // Not authorized: either show as locked or hide entirely.
+        return ShowUnauthorizedAsLocked
+            ? new ItemAuth(IsVisible: true, IsLocked: true,
+                           LockReason: item.LockReason ?? "You don't have access to this item")
+            : new ItemAuth(IsVisible: false, IsLocked: true, LockReason: item.LockReason);
+    }
+
+    // Returns cached result, or a safe default while async evaluation is pending:
+    // items with no requirements show immediately; restricted items stay hidden until evaluated.
+    private ItemAuth GetAuth(SidebarItem item)
+    {
+        if (_authCache.TryGetValue(item, out var cached))
+            return cached;
+
+        var hasRequirement =
+            item.RequireAuthenticated ||
+            item.RequiredRoles is { Length: > 0 } ||
+            !string.IsNullOrEmpty(item.RequiredPolicy);
+
+        return hasRequirement
+            ? new ItemAuth(IsVisible: false, IsLocked: true, LockReason: item.LockReason)
+            : new ItemAuth(IsVisible: true, IsLocked: item.IsLocked, LockReason: item.LockReason);
+    }
+
+    private async void OnAuthStateChanged(Task<AuthenticationState> task) =>
+        await EvaluateAuthorizationAsync();
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _currentRelativeUri = Nav.ToBaseRelativePath(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+    }
+
+    private async Task OnLockedClicked(SidebarItem item)
+    {
+        if (OnLockedItemClicked.HasDelegate)
+            await OnLockedItemClicked.InvokeAsync(item);
+    }
+
+    private bool IsActive(SidebarItem item)
+    {
+        var current = "/" + _currentRelativeUri.TrimStart('/');
+        var href = item.Href.StartsWith("/") ? item.Href : "/" + item.Href;
+
+        if (item.ExactMatch)
+            return string.Equals(current, href, StringComparison.OrdinalIgnoreCase);
+
+        return current.Equals(href, StringComparison.OrdinalIgnoreCase) ||
+               current.StartsWith(href.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetInitial(string name) =>
+        string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpper();
+
+    private string Highlight(string text)
+    {
+        var term = SidebarSearch?.Trim() ?? "";
+        if (string.IsNullOrEmpty(term)) return System.Net.WebUtility.HtmlEncode(text);
+
+        var encoded = System.Net.WebUtility.HtmlEncode(text);
+        var encodedTerm = System.Net.WebUtility.HtmlEncode(term);
+        var idx = encoded.IndexOf(encodedTerm, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return encoded;
+
+        return encoded[..idx] +
+               "<mark>" + encoded.Substring(idx, encodedTerm.Length) + "</mark>" +
+               encoded[(idx + encodedTerm.Length)..];
+    }
+
+    #region Icon helper
+    private string GetIconSvg(string icon, string color, int size) => Icons.Get(icon, color, size);
+    #endregion
+}
+

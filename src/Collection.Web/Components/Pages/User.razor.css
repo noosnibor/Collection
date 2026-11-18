@@ -1,0 +1,11 @@
+/* User page – permission grid header (theme aware) */
+
+.table-header-small th {
+    height: 36px;
+    padding: 6px 10px !important;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: middle;
+    color: var(--text-2);
+    background-color: var(--table-head-bg);
+}
